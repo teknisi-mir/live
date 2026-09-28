@@ -1,0 +1,22 @@
+{
+  "name": "Live MIR",
+  "short_name": "Live MIR",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "theme_color": "#00ff88",
+  "background_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "mir.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "mir.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
