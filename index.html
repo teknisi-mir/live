@@ -1645,6 +1645,7 @@ function parseDtLine(line) {
   const gpsStatus = parts[3];
   const uptimeDesi = parseFloat(parts[5]) || 0;
   const uptimeMin = (uptimeDesi / 600).toFixed(1);
+  const utc = parts[6].split('.')[0]
   const distance = parseFloat(parts[7]) || 0;
   const posStatus = parts[8];
   const version = parts[9];
@@ -1691,7 +1692,7 @@ function renderDtListPopup() {
   let html = '';
   keys.forEach(unitName => {
     const item = dtDataStore[unitName].latest;
-    const isOnline = (now - item.timestamp) < 30000;
+    const isOnline = (now - item.timestamp) < 20000;
     const dotClass = isOnline ? 'active' : 'inactive';
 
     html += `
@@ -1699,7 +1700,7 @@ function renderDtListPopup() {
         <div class="node-info">
           <div class="node-title">${item.unitName}</div>
           <div class="node-subtext">Last ${item.timeStr} ${item.gpsStatus} ${item.uptimeMin}min ${item.version}</div>
-          <div class="node-subtext">${item.distance}m ${item.posStatus} ${item.speed}kmh ${item.rssi}</div>
+          <div class="node-subtext">${item.distance}m ${item.posStatus} ${item.speed}kmh ${item.rssi} ${item.utc}</div>
         </div>
         <span class="dt-status-dot ${dotClass}"></span>
       </div>
