@@ -393,14 +393,16 @@
   </div>
 
   <div id="popup-dt-list" class="popup-modal">
-    <div class="popup-header">
-      <span>DT MIR</span>
+  <div class="popup-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+    <span>DT MIR</span>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <input type="text" id="dt-search" placeholder="Filter..."
+        style="width:100px; padding:3px 8px; font-size:12px; border-radius:12px; border:1px solid #444; background:#1e1e1e; color:#fff; outline:none;">
       <button class="btn-close" onclick="toggleDtListPopup()">&times;</button>
     </div>
-    <div class="popup-body" id="dt-list-container">
-      <div style="text-align: center; color: #888; padding: 10px;">Belum ada data DT MIR</div>
-    </div>
   </div>
+  <div class="popup-body" id="dt-list-container"></div>
+</div>
 </div>
 
 <div id="unit-popup" class="unit-popup">
@@ -1464,70 +1466,111 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
+let renderScheduled = false;
 function processDevstatPayload(payload) {
   if (!payload) return;
   const lines = payload.split('\n');
-
   lines.forEach(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-
-    if (trimmed.startsWith('NODE')) {
-      const parts = trimmed.split(',').map(p => p.trim());
+    const t = line.trim();
+    if (!t) return;
+    if (t.startsWith('NODE')) {
+      //... parsing NODE lu biarin sama...
+      const parts = t.split(',').map(p=>p.trim());
       if (parts.length >= 12) {
         const unitName = parts[0], lon = parseFloat(parts[1]), lat = parseFloat(parts[2]), gpsStatus = parts[3];
-        const uptimeDesi = parseFloat(parts[5]) || 0, uptimeMin = (uptimeDesi / 600).toFixed(1);
-        const activation = parseInt(parts[7]) === 1 ? 1 : 0, version = parts[9], rssi = parts[12]!== undefined? parts[12] : "";
-
+        const uptimeDesi = parseFloat(parts[5])||0, uptimeMin = (uptimeDesi/600).toFixed(1);
+        const activation = parseInt(parts[7])===1?1:0, version = parts[9], rssi = parts[12]||"";
         const now = new Date();
-        const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
-
-        if (!nodeDataStore[unitName]) nodeDataStore[unitName] = { history: [], latest: null };
-        const nodeEntry = { unitName, lon, lat, gpsStatus, uptimeMin, activation, version, rssi, timestamp: now.getTime(), timeStr };
-
-        nodeDataStore[unitName].history.push(nodeEntry);
-        if (nodeDataStore[unitName].history.length > 20) nodeDataStore[unitName].history.shift();
-        nodeDataStore[unitName].latest = nodeEntry;
+        const timeStr = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+        if (!nodeDataStore[unitName]) nodeDataStore[unitName] = {history:[], latest:null};
+        const e = {unitName,lon,lat,gpsStatus,uptimeMin,activation,version,rssi,timestamp:now.getTime(),timeStr};
+        nodeDataStore[unitName].history.push(e);
+        if (nodeDataStore[unitName].history.length>20) nodeDataStore[unitName].history.shift();
+        nodeDataStore[unitName].latest = e;
       }
-    } else if (trimmed.startsWith('DT')) {
-      parseDtLine(trimmed);
+    } else if (t.startsWith('DT')) {
+      parseDtLine(t);
     }
   });
 
-  if (!hasAutoFit && !geoTiffImage) {
-    const allPoints = [];
-    Object.values(nodeDataStore).forEach(node => {
-      if (node.latest && node.latest.lat && node.latest.lon) allPoints.push({ lat: node.latest.lat, lon: node.latest.lon });
-    });
-    Object.values(dtDataStore).forEach(dt => {
-      if (dt.latest && dt.latest.lat && dt.latest.lon) allPoints.push({ lat: dt.latest.lat, lon: dt.latest.lon });
-    });
-    if (allPoints.length > 0) autoFitToPoints(allPoints);
+  if (!hasAutoFit &&!geoTiffImage) {
+    const all = [];
+    Object.values(nodeDataStore).forEach(n=>{ if(n.latest) all.push(n.latest); });
+    Object.values(dtDataStore).forEach(d=>{ if(d.latest) all.push(d.latest); });
+    if (all.length>5) { autoFitToPoints(all); hasAutoFit = true; } // cuma sekali!
   }
 
-  updateNodeRTKBar();
-  updateDtRTKBar();
-  if (!isDragging && touchStartDist === 0) {
-    const nodePopup = document.getElementById('popup-node-list');
-    if (nodePopup && nodePopup.classList.contains('show')) {
-      renderNodeListPopup();
-    }
-
-    const dtPopup = document.getElementById('popup-dt-list');
-    if (dtPopup && dtPopup.classList.contains('show')) {
-      renderDtListPopup();
-    }
+  // JANGAN RENDER LANGSUNG - SCHEDULE AJA
+  if (!renderScheduled) {
+    renderScheduled = true;
+    setTimeout(()=>{
+      renderScheduled = false;
+      updateNodeRTKBar();
+      updateDtRTKBar();
+      if (!isDragging) {
+        const np = document.getElementById('popup-node-list');
+        if (np && np.classList.contains('show')) renderNodeListPopup();
+        const dp = document.getElementById('popup-dt-list');
+        if (dp && dp.classList.contains('show')) renderDtListPopup();
+      }
+      requestDraw();
+    }, 400); // max 2.5x detik
   }
-  requestDraw();
 }
 
-function updateNodeRTKBar() {
-  let total = 0, rtkFix = 0;
-  Object.values(nodeDataStore).forEach(node => {
-    node.history.forEach(msg => { total++; if (msg.gpsStatus === 'RTK FIX') rtkFix++; });
+let dtRenderTimer = null;
+let dtSearchDebounce = null;
+
+function renderDtListPopup(filterText = '') {
+  if (filterText === '') {
+    filterText = document.getElementById('dt-search')?.value || '';
+  }
+
+  const container = document.getElementById('dt-list-container');
+  if (!container) return;
+
+  let keys = Object.keys(dtDataStore);
+
+  if (filterText) {
+    const lower = filterText.toLowerCase();
+    keys = keys.filter(unitName => {
+      const item = dtDataStore[unitName]?.latest;
+      if (!item) return false;
+      const searchable = `${item.unitName} ${item.gpsStatus} ${item.version} ${item.posStatus} ${item.rssi} ${item.utc} ${item.distance} ${item.speed}`.toLowerCase();
+      return searchable.includes(lower);
+    });
+  }
+
+  if (keys.length === 0) {
+    container.innerHTML = `<div style="text-align:center; color:#888; padding:10px;">Tidak ada "${filterText}"</div>`;
+    return;
+  }
+
+  const now = Date.now();
+  let html = '';
+  keys.forEach(unitName => {
+    const store = dtDataStore[unitName];
+    const item = store.latest;
+    if (!item) return;
+    const isOnline = (now - item.timestamp) < 20000;
+    const dotClass = isOnline? 'active' : 'inactive';
+    const history = store.history || [];
+    const total = history.length;
+    const rtkFix = history.filter(m => m.gpsStatus === 'RTK FIX').length;
+    const rtkEach = total === 0? '0%' : `${Math.round((rtkFix / total) * 100)}%`;
+
+    html += `
+      <div class="dt-item" onclick="focusOnDt('${unitName}')">
+        <div class="node-info">
+          <div class="node-title">${item.unitName} <span style="font-size:0.95em; font-weight:600; color:#888;">Rtk Fix ${rtkEach} (${rtkFix}/${total})</span></div>
+          <div class="node-subtext">Last ${item.timeStr} ${item.gpsStatus} ${item.uptimeMin}min ${item.version}</div>
+          <div class="node-subtext">${item.distance}m ${item.posStatus} ${item.speed}kmh ${item.rssi} ${item.utc}</div>
+        </div>
+        <span class="dt-status-dot ${dotClass}"></span>
+      </div>
+    `;
   });
-  const el = document.getElementById('rtk-node-val');
-  if (el) el.textContent = total === 0 ? '0%' : `${Math.round((rtkFix / total) * 100)}%`;
+  container.innerHTML = html;
 }
 
 function renderNodeListPopup() {
@@ -1563,6 +1606,7 @@ function renderNodeListPopup() {
   });
   container.innerHTML = html;
 }
+
 
 function toggleNodeActivation(unitName, isChecked) {
   if (!mqttClient || !isMqttConnected) {
@@ -1645,7 +1689,7 @@ function parseDtLine(line) {
   const gpsStatus = parts[3];
   const uptimeDesi = parseFloat(parts[5]) || 0;
   const uptimeMin = (uptimeDesi / 600).toFixed(1);
-  const utc = parts[6].split('.')[0]
+	const utc = parts[6].split('.')[0]
   const distance = parseFloat(parts[7]) || 0;
   const posStatus = parts[8];
   const version = parts[9];
@@ -1658,56 +1702,52 @@ function parseDtLine(line) {
                   String(now.getSeconds()).padStart(2, '0');
 
   const dtEntry = {
-    unitName, lon, lat, gpsStatus, uptimeMin, distance, posStatus, version, speed, rssi,
+    unitName, lon, lat, gpsStatus, uptimeMin, utc, distance, posStatus, version, speed, rssi,
     timestamp: now.getTime(), timeStr
   };
 
   if (!dtDataStore[unitName]) dtDataStore[unitName] = { history: [], latest: null };
 
   dtDataStore[unitName].history.push(dtEntry);
-  if (dtDataStore[unitName].history.length > 10) dtDataStore[unitName].history.shift();
+  if (dtDataStore[unitName].history.length > 20) dtDataStore[unitName].history.shift();
   dtDataStore[unitName].latest = dtEntry;
+}
+
+function updateNodeRTKBar() {
+  let total = 0, rtkFix = 0;
+  Object.values(nodeDataStore).forEach(node => {
+    (node.history || []).forEach(msg => {
+      total++;
+      if (msg.gpsStatus === 'RTK FIX') rtkFix++;
+    });
+  });
+  const el = document.getElementById('rtk-node-val');
+  if (el) el.textContent = total === 0 ? '0%' : `${Math.round((rtkFix / total) * 100)}%`;
 }
 
 function updateDtRTKBar() {
   let total = 0, rtkFix = 0;
   Object.values(dtDataStore).forEach(dt => {
-    dt.history.forEach(msg => { total++; if (msg.gpsStatus === 'RTK FIX') rtkFix++; });
+    (dt.history || []).forEach(msg => {
+      total++;
+      if (msg.gpsStatus === 'RTK FIX') rtkFix++;
+    });
   });
   const el = document.getElementById('rtk-dt-val');
   if (el) el.textContent = total === 0 ? '0%' : `${Math.round((rtkFix / total) * 100)}%`;
 }
 
-function renderDtListPopup() {
-  const container = document.getElementById('dt-list-container');
-  if (!container) return;
-
-  const keys = Object.keys(dtDataStore);
-  if (keys.length === 0) {
-    container.innerHTML = '<div style="text-align: center; color: #888; padding: 10px;">Belum ada data DT MIR</div>';
-    return;
+document.addEventListener('DOMContentLoaded', ()=>{
+  const s = document.getElementById('dt-search');
+  if(s){
+    s.addEventListener('click', e=>e.stopPropagation());
+    s.addEventListener('input', e=>{
+      clearTimeout(window._dtDeb);
+      window._dtDeb = setTimeout(()=>renderDtListPopup(e.target.value), 200);
+    });
   }
+});
 
-  const now = Date.now();
-  let html = '';
-  keys.forEach(unitName => {
-    const item = dtDataStore[unitName].latest;
-    const isOnline = (now - item.timestamp) < 20000;
-    const dotClass = isOnline ? 'active' : 'inactive';
-
-    html += `
-      <div class="dt-item" onclick="focusOnDt('${unitName}')">
-        <div class="node-info">
-          <div class="node-title">${item.unitName}</div>
-          <div class="node-subtext">Last ${item.timeStr} ${item.gpsStatus} ${item.uptimeMin}min ${item.version}</div>
-          <div class="node-subtext">${item.distance}m ${item.posStatus} ${item.speed}kmh ${item.rssi} ${item.utc}</div>
-        </div>
-        <span class="dt-status-dot ${dotClass}"></span>
-      </div>
-    `;
-  });
-  container.innerHTML = html;
-}
 
 async function focusOnDt(unitName) {
   if (!dtDataStore[unitName] || !dtDataStore[unitName].latest) return;
@@ -2087,6 +2127,6 @@ btnInstall.addEventListener('click', async ()=>{
 });
 
 </script>
-<footer>© 2026 GPRZ | v2.1</footer>
+<footer>© 2026 GPRZ | v2.2</footer>
 </body>
 </html>
