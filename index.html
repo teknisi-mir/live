@@ -1,0 +1,2099 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Live MIR</title>
+
+<link rel="icon" href="mir.png" type="image/png">
+<link rel="apple-touch-icon" href="mir.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#00ff88">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100vw; height: 100vh; height: 100dvh;
+    overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #111; color: #eee; user-select: none; -webkit-user-select: none;
+  }
+  #canvas-container { position: relative; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; }
+  canvas { width: 100vw; height: 100vh; height: 100dvh; display: block; touch-action: none; }
+  #top-info-bar {
+    position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 20;
+    display: flex; align-items: center; gap: 12px; padding: 6px 14px;
+    background: rgba(18, 24, 38, 0.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4); font-family: 'Consolas', 'Courier New', monospace; color: #e0e6ed;
+  }
+  .info-left-box {
+    display: flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.35);
+    padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status-dot.live { background: #00ff88; box-shadow: 0 0 8px #00ff88; animation: pulse 1.8s infinite; }
+  .status-dot.offline { background: #778899; box-shadow: none; animation: none; }
+  @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } 100% { opacity: 1; transform: scale(1); } }
+  .status-text.live { color: #fff; font-weight: 700; }
+  .divider { color: rgba(255, 255, 255, 0.3); }
+  #clock-display { color: #d1dbe5; min-width: 190px; }
+  .info-rtk-box { display: flex; flex-direction: column; align-items: flex-start; font-size: 10px; white-space: nowrap; }
+  .rtk-title { font-size: 11px; font-weight: 800; color: #38bdf8; letter-spacing: 0.8px; line-height: 1; margin-bottom: 2px; width: 100%; text-align: center; }
+  .rtk-values { display: flex; gap: 14px; align-items: center; }
+  .rtk-item { display: flex; flex-direction: column; align-items: center; }
+  .rtk-label { font-size: 9px; color: #38bdf8; font-weight: 700; line-height: 1; }
+  .rtk-val { font-size: 10.5px; font-weight: 700; color: #ffffff; line-height: 1.1; }
+  #compass {
+    position: absolute; top: 15px; right: 15px; width: 54px; height: 54px; z-index: 10;
+    color: #fff; text-align: center; font-family: Arial, sans-serif; font-weight: bold; font-size: 13px;
+    cursor: grab; transform-origin: center; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
+    border: 1.5px solid rgba(255, 255, 255, 0.25); border-radius: 50%; box-sizing: border-box; padding-top: 4px;
+  }
+  #compass:active { cursor: grabbing; }
+  #compass .arrow {
+    width: 20px; height: 26px; background: #ff2e63; margin: 1px auto 0;
+    clip-path: polygon(50% 0%, 0% 85%, 50% 70%, 100% 85%);
+  }
+  #floating-bar {
+    position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 12px; z-index: 20; padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(8px);
+    border-radius: 30px; border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+  .btn-pastel {
+    width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 50%; cursor: pointer; padding: 0;
+  }
+  .btn-pastel svg { width: 20px; height: 20px; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .btn-pastel:active { transform: scale(0.88); }
+  .btn-pastel-1 { background: rgba(255, 179, 186, 0.22); border-color: rgba(255, 179, 186, 0.4); }
+  .btn-pastel-1 svg { stroke: #ffb3ba; }
+  .btn-pastel-2 { background: rgba(186, 255, 201, 0.22); border-color: rgba(186, 255, 201, 0.4); }
+  .btn-pastel-2 svg { stroke: #baffc9; }
+  .btn-pastel-3 { background: rgba(186, 225, 255, 0.22); border-color: rgba(186, 225, 255, 0.4); }
+  .btn-pastel-3 svg { stroke: #bae1ff; }
+  .btn-pastel-4 { background: rgba(226, 190, 255, 0.22); border-color: rgba(226, 190, 255, 0.4); }
+  .btn-pastel-4 svg { stroke: #e2beff; }
+
+  #popup-geotiff {
+    display: none; position: absolute; bottom: 85px; left: 20px; z-index: 30;
+    padding: 12px 16px; background: rgba(18, 24, 38, 0.75); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5); color: #fff; font-size: 12px;
+  }
+  #popup-geotiff.show { display: flex; flex-direction: column; gap: 8px; }
+  #popup-geotiff label { font-weight: 600; color: #ffb3ba; }
+  #popup-geotiff input[type="file"] { font-size: 11px; color: #ccc; }
+  #popup-geotiff input[type="file"]::file-selector-button {
+    background: rgba(255, 179, 186, 0.2); border: 1px solid rgba(255, 179, 186, 0.4);
+    color: #ffb3ba; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+  }
+	#popup-geotiff .popup-header { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px; margin-bottom:4px; width:100%; }
+
+  @media (max-width: 600px) {
+    #top-info-bar { top: 10px; gap: 6px; padding: 5px 8px; max-width: 95vw; }
+    .info-left-box { padding: 3px 5px; font-size: 9.5px; gap: 4px; }
+    #clock-display { min-width: unset; }
+    .rtk-title { font-size: 9px; } .rtk-label { font-size: 7.5px; } .rtk-val { font-size: 8.5px; }
+    #compass { width: 44px; height: 44px; top: 10px; right: 10px; font-size: 11px; }
+    #compass .arrow { width: 16px; height: 20px; }
+    #floating-bar { bottom: 16px; gap: 8px; padding: 6px 8px; }
+    .btn-pastel { width: 38px; height: 38px; }
+    #popup-geotiff { left: 50%; transform: translateX(-50%); bottom: 75px; width: 80vw; }
+  }
+
+  .popup-modal {
+    display: none; position: absolute; z-index: 35;
+    padding: 14px 18px; background: rgba(18, 24, 38, 0.82);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6); color: #fff; font-size: 12px;
+    width: 280px;
+  }
+  #popup-profile { bottom: 85px; left: 50%; transform: translateX(-50%); }
+  #popup-edit-profile { bottom: 85px; left: 50%; transform: translateX(-50%); width: 310px; }
+  .popup-modal.show { display: flex; flex-direction: column; gap: 10px; }
+
+  .popup-header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: #bae1ff; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px; }
+  .btn-close { background: none; border: none; color: #aaa; font-size: 18px; cursor: pointer; }
+
+  .popup-body select, .popup-body input[type="text"], .popup-body input[type="password"], .popup-body input[type="number"] {
+    width: 100%; padding: 6px 8px; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px; color: #fff; font-size: 11px; box-sizing: border-box; margin-bottom: 6px;
+  }
+  
+  .profile-actions { display: flex; gap: 8px; width: 100%; }
+  .btn-action { flex: 1; padding: 7px; border: none; border-radius: 8px; font-weight: 700; font-size: 11px; cursor: pointer; transition: 0.2s; }
+  .btn-conn { background: rgba(186, 255, 201, 0.3); color: #baffc9; border: 1px solid rgba(186, 255, 201, 0.5); }
+  .btn-edit { background: rgba(186, 225, 255, 0.3); color: #bae1ff; border: 1px solid rgba(186, 225, 255, 0.5); }
+  .btn-save { background: rgba(0, 255, 136, 0.3); color: #00ff88; border: 1px solid rgba(0, 255, 136, 0.5); }
+  .btn-danger { background: rgba(255, 114, 118, 0.3); color: #ff7276; border: 1px solid rgba(255, 114, 118, 0.5); }
+  .btn-add-main { background: rgba(226, 190, 255, 0.3); color: #e2beff; border: 1px solid rgba(226, 190, 255, 0.5); }
+  .btn-add-new { background: rgba(255, 221, 148, 0.3); color: #ffdd94; border: 1px solid rgba(255, 221, 148, 0.5); }
+  
+  .status-box { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); }
+  .data-preview { margin-top: 5px; font-size: 10px; color: #aaa; }
+  .val-tag { color: #00ff88; font-family: monospace; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .form-grid input, .form-grid select { margin-bottom: 0; }
+  .checkbox-label { grid-column: span 2; display: flex; align-items: center; gap: 6px; font-size: 11px; margin-top: 4px; }
+
+  .info-left-box.status-live #status-dot { background-color: #00ff88; box-shadow: 0 0 8px #00ff88; animation: pulse-dot 1.8s infinite; }
+  .info-left-box.status-live #status-text { color: #00ff88; }
+  .info-left-box.status-off #status-dot { background-color: #ff7276; box-shadow: none; animation: none; }
+  .info-left-box.status-off #status-text { color: #ff7276; }
+  .info-left-box.status-reconnecting #status-dot { background-color: #ffdd94; box-shadow: 0 0 8px #ffdd94; animation: pulse-dot 0.8s infinite; }
+  .info-left-box.status-reconnecting #status-text { color: #ffdd94; }
+
+  @keyframes pulse-dot {
+    0% { opacity: 0.3; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.3; transform: scale(0.9); }
+  }
+
+  #popup-node-list { bottom: 85px; left: 20px; transform: none; width: 330px; max-height: 380px; overflow-y: auto; }
+  .node-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+  .node-item:last-child { border-bottom: none; }
+  .node-info { display: flex; flex-direction: column; gap: 2px; }
+  .node-title { font-weight: 800; font-size: 13px; color: #fff; letter-spacing: 0.5px; }
+  .node-subtext { font-size: 10px; color: #aaa; font-family: monospace; }
+
+  .switch { position: relative; display: inline-block; width: 44px; height: 22px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .3s; border-radius: 22px; border: 1px solid rgba(255,255,255,0.2); }
+  .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .3s; border-radius: 50%; }
+  input:checked + .slider { background-color: #00c853; }
+  input:checked + .slider:before { transform: translateX(22px); }
+
+  .blinking-toggle { animation: toggleBlink 0.8s infinite alternate; pointer-events: none; opacity: 0.6; }
+  @keyframes toggleBlink { 0% { opacity: 0.3; transform: scale(0.98); } 100% { opacity: 1; transform: scale(1); } }
+
+  #popup-dt-list { bottom: 85px; right: 20px; left: auto; transform: none; width: 320px; max-height: 400px; overflow-y: auto; }
+  .dt-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; transition: background 0.2s; }
+  .dt-item:hover { background: rgba(255, 255, 255, 0.05); }
+  .dt-item:last-child { border-bottom: none; }
+  .dt-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dt-status-dot.active { background-color: #00ff88; box-shadow: 0 0 6px #00ff88; }
+  .dt-status-dot.inactive { background-color: #778899; }
+  footer {
+    position: fixed;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5); /* Sesuaikan warna teks jika latar terang */
+    pointer-events: none; /* Supaya klik tidak terhalang jika di atas canvas/elemen lain */
+    z-index: 9999;
+  }
+  #unit-popup{ 
+    display:none; 
+    position:absolute; 
+    z-index:40; 
+    width:fit-content;
+    min-width:120px;
+    background:rgba(18,24,38,0.92); 
+    backdrop-filter:blur(14px); 
+    -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.18); 
+    border-radius:14px; 
+    box-shadow:0 12px 30px rgba(0,0,0,0.6); 
+    color:#fff; 
+    font-size:11px; 
+    overflow:hidden; 
+    pointer-events:auto; 
+    transform:translate(-50%, -125%); 
+  }
+  #unit-popup.show{ display:block; }
+  #unit-popup.is-dt{ min-width:130px; max-width:150px; }
+  #unit-popup.is-node{ min-width:150px; max-width:160px; }
+  #unit-popup.is-node [data-role="dt-only"]{ display:none!important; }
+
+  .popup-top{
+    display:flex; 
+    align-items:center; 
+    gap:6px; 
+    padding:8px 10px; 
+    background:rgba(255,255,255,0.06); 
+    border-bottom:1px solid rgba(255,255,255,0.08);
+  }
+  .popup-name{ 
+    flex:1; 
+    font-weight:800; 
+    font-size:12px; 
+    letter-spacing:0.5px; 
+    color:#bae1ff; 
+    white-space:nowrap; 
+    overflow:hidden; 
+    text-overflow:ellipsis; 
+  }
+  .popup-icon-btn{
+    width:26px; height:26px; 
+    border-radius:50%; 
+    border:1px solid rgba(255,255,255,0.18); 
+    background:rgba(255,255,255,0.08); 
+    color:#fff; 
+    cursor:pointer; 
+    display:flex; 
+    align-items:center; 
+    justify-content:center; 
+    font-size:14px; 
+    transition:0.2s;
+  }
+  .popup-icon-btn.active{ 
+    background:rgba(0,255,136,0.25); 
+    border-color:#00ff88; 
+    color:#00ff88; 
+    box-shadow:0 0 10px rgba(0,255,136,0.5); 
+  }
+  .popup-icon-btn.close{ background:rgba(255,100,100,0.15); }
+  .popup-body{ padding:8px 10px; display:flex; flex-direction:column; gap:4px; }
+  .popup-row{  display:flex; justify-content:space-between; gap:12px; font-family:Consolas, monospace; }
+  .popup-row span{ color:#8a9bb0; font-size:10px; }
+  .popup-row b{ color:#e6f0ff; font-size:11px; font-weight:700; }
+	.btn-kml-green {
+		display: inline-flex; align-items: center; justify-content: center;
+		padding: 4px 10px; margin-left: auto; margin-right: 8px;
+		background: rgba(0, 255, 136, 0.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+		border: 1px solid rgba(0, 255, 136, 0.45); border-radius: 20px;
+		color: #baffc9; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;
+		cursor: pointer; transition: 0.2s; box-shadow: 0 0 12px rgba(0,255,136,0.25);
+  }
+	.btn-kml-green:hover { background: rgba(0,255,136,0.28); transform: scale(1.05); }
+	.btn-kml-green:disabled { opacity: 0.3; pointer-events: none; }
+
+</style>
+</head>
+<body>
+<div id="canvas-container">
+  <div id="top-info-bar">
+    <div class="info-left-box" id="mqtt-live-badge">
+      <span id="status-dot" class="status-dot"></span>
+      <span id="status-text" class="status-text">OFF</span>	 
+      <span id="clock-display"></span>
+    </div>
+    <div class="info-rtk-box">
+      <div class="rtk-title">RTK FIX</div>
+      <div class="rtk-values">
+        <div class="rtk-item"><span class="rtk-label">NODE</span><span id="rtk-node-val" class="rtk-val">0%</span></div>
+        <div class="rtk-item"><span class="rtk-label">DT</span><span id="rtk-dt-val" class="rtk-val">0%</span></div>
+      </div>
+    </div>
+  </div>
+  <canvas id="canvas"></canvas>
+  <div id="compass"><span>N</span><div class="arrow"></div></div>
+  
+<div id="popup-geotiff">
+  <div class="popup-header">
+    <label style="margin:0;">Geotiff Ortho Photo</label>
+    <button class="btn-close" onclick="toggleGeoTiffPopup()">&times;</button>
+  </div>
+  
+  <button id="btn-load-dynamic" onclick="loadDynamicGeoTiff()" style="width: 100%; margin-top: 8px; padding: 7px 10px; font-size: 11px; font-weight: 600; background: #234d35; color: #c8ffda; border: 1px solid #3a7a53; border-radius: 6px; cursor: pointer;">
+    Load Map dari server /maps/{tag}.tif
+  </button>   
+  
+  <div id="geotiff-status-text" style="display: none; margin-top: 6px; font-size: 11px; color: #ffeb3b; text-align: center; font-weight: bold;">
+    Connecting...
+  </div>
+  <div style="margin: 10px 0; border-top: 1px solid rgba(255,255,255,0.15);"></div>
+  
+  <label>Atau Load Manual</label>
+  <input type="file" id="geotiff-input" accept=".tif,.tiff">
+
+  <button id="btnInstall" style="display:none; width:100%; margin-top:10px; padding:8px; font-size:11px; font-weight:600; background:#00ff88; color:#000; border:none; border-radius:6px; cursor:pointer;">
+    Install App
+  </button>
+</div>
+
+  <div id="floating-bar">
+    <button class="btn-pastel btn-pastel-2" onclick="onBtnClick(2)"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2" y="2" width="20" height="8" rx="2"/>
+    <rect x="2" y="14" width="20" height="8" rx="2"/>
+    <circle cx="6" cy="6" r="1" fill="currentColor"/>
+    <circle cx="6" cy="18" r="1" fill="currentColor"/>
+    </svg></button>
+    <button class="btn-pastel btn-pastel-1" onclick="toggleGeoTiffPopup()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+    <polyline points="2 17 12 22 22 17"/>
+    <polyline points="2 12 12 17 22 12"/>
+    </svg></button>    
+    <button class="btn-pastel btn-pastel-3" onclick="onBtnClick(3)"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg></button>
+    <button class="btn-pastel btn-pastel-4" onclick="onBtnClick(4)"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a4 4 0 1 1 4-4 4 4 0 0 1-4 4z"/></svg></button>
+  </div>
+
+  <div id="popup-profile" class="popup-modal">
+    <div class="popup-header">
+      <span>Profil Koneksi MQTT</span>
+      <button class="btn-close" onclick="toggleProfilePopup()">&times;</button>
+    </div>
+    <div class="popup-body">
+      <div class="field-group">
+        <label>Pilih Profil:</label>
+        <select id="profile-select" onchange="onProfileSelectChange()"></select>
+      </div>
+      <div class="profile-actions">
+        <button id="btn-mqtt-connect" class="btn-action btn-conn" onclick="handleConnectDisconnect()">Connect</button>
+        <button class="btn-action btn-edit" onclick="openEditProfileModal()">Edit</button>
+        <button class="btn-action btn-add-main" onclick="openAddProfileModal()">+ Add</button>
+      </div>
+      <div class="status-box">
+        <div>Status: <span id="mqtt-status-text" style="color: #ffb3ba;">Disconnected</span></div>
+        <div class="data-preview">
+          <div>devstat: <span id="mem-devstat" class="val-tag">Empty</span></div>
+          <div>dispperi: <span id="mem-dispperi" class="val-tag">Empty</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="popup-edit-profile" class="popup-modal">
+    <div class="popup-header">
+      <span id="edit-modal-title">Edit Profil</span>
+      <button class="btn-close" onclick="closeEditProfileModal()">&times;</button>
+    </div>
+    <div class="popup-body">
+      <input type="hidden" id="edit-prof-id">
+      <div class="form-grid">
+        <input type="text" id="prof-name" placeholder="Nama sesuai TAG">
+        <select id="prof-transport">
+          <option value="ws">ws</option>
+          <option value="wss">wss</option>
+        </select>
+        <input type="text" id="prof-ip" placeholder="IP / Domain">
+        <input type="text" id="prof-path" placeholder="Path (e.g. /ws)">
+        <input type="number" id="prof-port" placeholder="Port (e.g. 15675)">
+        <input type="text" id="prof-user" placeholder="Username">
+        <input type="password" id="prof-pass" placeholder="Password">
+        <label class="checkbox-label">
+          <input type="checkbox" id="prof-anon" onchange="toggleAnonFields(this.checked)"> Anonymous Mode
+        </label>
+      </div>
+      <div class="profile-actions" style="margin-top: 10px;">
+        <button class="btn-action btn-save" onclick="saveProfile()">Simpan</button>
+        <button class="btn-action btn-add-new" onclick="openAddProfileModal()">+ New</button>
+        <button id="btn-delete-profile" class="btn-action btn-danger" onclick="deleteProfile()">Hapus</button>
+      </div>
+    </div>
+  </div>
+
+    <div id="popup-node-list" class="popup-modal">
+    <div class="popup-header">
+      <span>ROVER</span>
+      <button id="btn-kml-boundary" class="btn-kml-green" onclick="downloadKMLBoundary()">KML Boundary</button>
+      <button class="btn-close" onclick="toggleNodeListPopup()">&times;</button>
+    </div>
+    <div class="popup-body" id="node-list-container">
+      <div style="text-align: center; color: #888; padding: 10px;">Belum ada data Rover</div>
+    </div>
+  </div>
+
+  <div id="popup-dt-list" class="popup-modal">
+    <div class="popup-header">
+      <span>DT MIR</span>
+      <button class="btn-close" onclick="toggleDtListPopup()">&times;</button>
+    </div>
+    <div class="popup-body" id="dt-list-container">
+      <div style="text-align: center; color: #888; padding: 10px;">Belum ada data DT MIR</div>
+    </div>
+  </div>
+</div>
+
+<div id="unit-popup" class="unit-popup">
+  <div class="popup-top">
+    <div id="popup-unit-name" class="popup-name">UNIT</div>
+    <button id="popup-follow-btn" class="popup-icon-btn">◎</button>
+    <button id="popup-close-btn" class="popup-icon-btn close">×</button>
+  </div>
+  <div class="popup-body" id="popup-body">
+    <div class="popup-row" data-role="status"><span>Status</span><b id="popup-status">-</b></div>
+    <div class="popup-row" data-role="dt-only"><span>Distance</span><b id="popup-distance">-</b></div>
+    <div class="popup-row" data-role="gps"><span>GPS</span><b id="popup-gps">-</b></div>
+    <div class="popup-row" data-role="dt-only"><span>Speed</span><b id="popup-speed">-</b></div>
+    <div class="popup-row" data-role="dt-only"><span>Uptime</span><b id="popup-uptime">-</b></div>
+    <div class="popup-row" data-role="last"><span>Last Data</span><b id="popup-last">-</b></div>
+  </div>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const swCode = `
+      const CACHE_NAME = 'offline-libs-v1';
+      const URLS_TO_CACHE = [
+        'https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js'
+      ];
+      self.addEventListener('install', (event) => {
+        event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(URLS_TO_CACHE)));
+        self.skipWaiting();
+      });
+      self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+      self.addEventListener('fetch', (event) => {
+        event.respondWith(
+          caches.match(event.request).then((cached) => cached || fetch(event.request))
+        );
+      });
+    `;
+    const blob = new Blob([swCode], { type: 'application/javascript' });
+    navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => console.error(err));
+  });
+}
+
+const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d'), compass = document.getElementById('compass');
+let scale = 1, offsetX = 0, offsetY = 0, rotation = 0, isDragging = false, lastX = 0, lastY = 0;
+let touchStartDist = 0, touchStartScale = 1, isRotatingCompass = false, compassStartAngle = 0, animating = false;
+
+let touchStartAngle = 0;
+let touchStartRotation = 0;
+
+let initialTouchAngle = 0;
+let initialCanvasRotation = 0;
+let geoTiffImage = null;
+let bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+let currentDispPeriPoints = [];
+let currentGreenBoxes = [];
+let currentSafeCoord = null;
+let hasAutoFit = false;
+
+let nodeDataStore = {};
+let dtDataStore = {};
+const blinkingNodeMap = {};
+const blinkingNodeTimers = {};
+
+let dpr = window.devicePixelRatio || 1;
+let logicalW = 0, logicalH = 0;
+
+let selectedUnitKey = null;
+let followMode = false;
+
+let needsRedraw = false;
+
+function requestDraw() {
+  if (!needsRedraw) {
+    needsRedraw = true;
+    requestAnimationFrame(() => {
+      draw();
+      needsRedraw = false;
+    });
+  }
+}
+
+function updatePopupPosition() {
+  if (!selectedUnitKey) return;
+  const store = nodeDataStore[selectedUnitKey]?.latest || dtDataStore[selectedUnitKey]?.latest;
+  if (!store) return;
+
+  const sx = store.lon * scale + offsetX;
+  const sy = -store.lat * scale + offsetY;
+  const rotX = sx * Math.cos(rotation) - sy * Math.sin(rotation);
+  const rotY = sx * Math.sin(rotation) + sy * Math.cos(rotation);
+
+  const popupEl = document.getElementById('unit-popup');
+  if (popupEl) {
+    popupEl.style.left = (rotX + logicalW / 2) + 'px';
+    popupEl.style.top = (rotY + logicalH / 2) + 'px';
+  }
+}
+
+function formatLast(ts){
+  if(!ts) return '-';
+  const diff = (Date.now() - ts) / 1000; 
+  if(diff < 60) return Math.floor(diff) +  's ago';
+  return new Date(ts).toLocaleTimeString();
+}
+
+function openUnitPopup(key){
+  selectedUnitKey = key;
+  document.getElementById('unit-popup').classList.add('show');
+  updateUnitPopup();
+  if(navigator.vibrate) navigator.vibrate(30);
+}
+function closeUnitPopup(){
+  selectedUnitKey = null; followMode = false;
+  document.getElementById('unit-popup').classList.remove('show');
+  document.getElementById('popup-follow-btn').textContent = '◎';
+}
+function updateUnitPopup(){
+  if(!selectedUnitKey) return;
+  const isNode = selectedUnitKey.startsWith("NODE") || !!nodeDataStore[selectedUnitKey];
+  const store = isNode
+    ? (nodeDataStore[selectedUnitKey]?.latest || nodeDataStore[selectedUnitKey])
+    : (dtDataStore[selectedUnitKey]?.latest || dtDataStore[selectedUnitKey]);
+    
+  if(!store){
+    closeUnitPopup();
+    return;
+  }
+
+	if(Date.now() - store.timestamp > 20000){
+		closeUnitPopup();
+		return;
+	}
+
+	document.getElementById('popup-unit-name').textContent = (store.unitName || selectedUnitKey).split('-')[0];
+	document.getElementById('popup-status').textContent = store.posStatus || store.status || (store.activation==1?'Aktif':'OFF');
+	document.getElementById('popup-gps').textContent = store.gpsStatus || store.gps || '-';
+	document.getElementById('popup-last').textContent = formatLast(store.timestamp);
+
+	// ambil row nya
+	const rowDist = document.getElementById('popup-distance').closest('div');
+	const rowUptime = document.getElementById('popup-uptime').closest('div');
+	const rowSpeed = document.getElementById('popup-speed').closest('div');
+
+	if(!isNode){
+		document.getElementById('popup-distance').textContent = store.distance? store.distance + ' m' : '-';
+		document.getElementById('popup-uptime').textContent = store.uptimeMin? store.uptimeMin + ' min' : '-';
+		document.getElementById('popup-speed').textContent = store.speed? store.speed + ' km/h' : '0 km/h';
+		if(rowDist) rowDist.style.display = '';
+		if(rowUptime) rowUptime.style.display = '';
+		if(rowSpeed) rowSpeed.style.display = '';
+	} else {
+		// NODE = cuma 3 baris
+		if(rowDist) rowDist.style.display = 'none';
+		if(rowUptime) rowUptime.style.display = 'none';
+		if(rowSpeed) rowSpeed.style.display = 'none';
+	}
+}
+
+(function(){
+  const c = document.getElementById('canvas');
+  c.addEventListener('click', (e)=>{
+    if(isDragging) return;
+    const rect = c.getBoundingClientRect();
+    let mx = (e.clientX-rect.left) - logicalW/2;
+    let my = (e.clientY-rect.top) - logicalH/2;
+    let rx = mx*Math.cos(-rotation) - my*Math.sin(-rotation);
+    let ry = mx*Math.sin(-rotation) + my*Math.cos(-rotation);
+    let worldLon = (rx-offsetX)/scale;
+    let worldLat = -(ry-offsetY)/scale;
+    let bestKey=null, bestScore=1e9, bestDist=30/scale;
+    Object.keys(nodeDataStore).forEach(k=>{
+      const pt=nodeDataStore[k].latest||nodeDataStore[k];
+      const d=Math.hypot(pt.lon-worldLon, pt.lat-worldLat);
+      if(d<bestDist && d*scale<bestScore){bestScore=d*scale; bestKey=k;}
+    });
+    Object.keys(dtDataStore).forEach(k=>{
+      const pt=dtDataStore[k].latest; if(!pt) return;
+      const d=Math.hypot(pt.lon-worldLon, pt.lat-worldLat);
+      if(d<bestDist && d*scale<bestScore){bestScore=d*scale; bestKey=k;}
+    });
+    if(bestKey) openUnitPopup(bestKey);
+  });
+  document.getElementById('popup-close-btn').onclick = (e)=>{e.stopPropagation(); closeUnitPopup();};
+  document.getElementById('popup-follow-btn').onclick = (e)=>{
+    e.stopPropagation();
+    followMode=!followMode;
+    e.currentTarget.classList.toggle('active', followMode);
+    e.currentTarget.textContent = followMode?'◉':'◎';
+    if(navigator.vibrate) navigator.vibrate(followMode?[40,30,40]:20);
+  };
+})();
+
+setInterval(() => {
+  if (selectedUnitKey && typeof updateUnitPopup === 'function') {
+    updateUnitPopup();
+  }
+}, 500); 
+
+function resize() {
+  const c = document.getElementById('canvas-container');
+  if (!c) return;
+  dpr = window.devicePixelRatio || 1;
+  logicalW = c.clientWidth;
+  logicalH = c.clientHeight;
+  canvas.width = Math.round(logicalW * dpr);
+  canvas.height = Math.round(logicalH * dpr);
+  canvas.style.width = logicalW + 'px';
+  canvas.style.height = logicalH + 'px';
+  draw();
+}
+
+window.addEventListener('resize', resize); 
+
+const getAngle = (cx, cy, x, y) => Math.atan2(y - cy, x - cx);
+
+
+function getMqttHostIp() {
+  if (mqttClient && mqttClient.host) {
+    return mqttClient.host;
+  }
+  return window.location.hostname || 'localhost';
+}
+
+function loadDynamicGeoTiff() {
+  const hostIp = getMqttHostIp();
+
+  const activeProfileName = (currentProfile && currentProfile.name) 
+    ? currentProfile.name 
+    : 'sm6';
+  
+  const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+
+  let dynamicUrl;
+  if (activeProfileName === 'demo') {
+    dynamicUrl = 'https://gprz.my.id/maps/demo.tif';
+  } else {
+    dynamicUrl = `${protocol}//${hostIp}/maps/${activeProfileName}.tif`;
+  }
+
+  console.log("Memuat GeoTIFF dinamis dari URL:", dynamicUrl);
+  loadGeoTiffFromUrl(dynamicUrl);
+}
+
+async function loadGeoTiffFromUrl(url) {
+  const statusEl = document.getElementById('geotiff-status-text');
+  const btnEl = document.getElementById('btn-load-dynamic'); 
+
+  try {
+    if (typeof GeoTIFF === 'undefined') {
+      alert("Library GeoTIFF belum siap.");
+      return;
+    }
+
+    let formattedUrl = url.trim();
+    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+      formattedUrl = `${protocol}//${formattedUrl}`;
+    }
+
+    if (statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.textContent = 'Downloading...';
+      statusEl.style.color = '#ffeb3b';
+    }
+    if (btnEl) btnEl.disabled = true;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); 
+
+    console.log("Mengunduh dari URL:", formattedUrl);
+
+    const response = await fetch(formattedUrl, { signal: controller.signal });
+    clearTimeout(timeoutId); 
+
+    if (!response.ok) {
+      throw new Error(`Gagal mengunduh file (HTTP ${response.status}: ${response.statusText})`);
+    }
+    
+    if (statusEl) statusEl.textContent = 'Processing GeoTIFF...';
+
+    const arrayBuffer = await response.arrayBuffer();
+    
+    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+      throw new Error("File GeoTIFF kosong atau korup.");
+    }
+
+    const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+    const image = await tiff.getImage();
+    const bbox = image.getBoundingBox();
+
+    bounds.minX = bbox[0]; bounds.minY = bbox[1];
+    bounds.maxX = bbox[2]; bounds.maxY = bbox[3];
+
+    const width = image.getWidth(), height = image.getHeight();
+    const rgbData = await image.readRGB();
+
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = width; offCanvas.height = height;
+    const offCtx = offCanvas.getContext('2d');
+    const imgData = offCtx.createImageData(width, height);
+    const data = imgData.data;
+
+    let srcIdx = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = rgbData[srcIdx], g = rgbData[srcIdx + 1], b = rgbData[srcIdx + 2];
+      data[i] = r; data[i + 1] = g; data[i + 2] = b;
+      data[i + 3] = (r === 0 && g === 0 && b === 0) ? 0 : 255;
+      srcIdx += 3;
+    }
+
+    offCtx.putImageData(imgData, 0, 0);
+    geoTiffImage = offCanvas;
+
+    const geoHeight = bounds.maxY - bounds.minY;
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+
+    scale = canvas.height / geoHeight;
+    offsetX = -centerX * scale;
+    offsetY = centerY * scale;
+    hasAutoFit = true;
+
+    if (statusEl) statusEl.style.display = 'none';
+    if (btnEl) btnEl.disabled = false;
+
+    toggleGeoTiffPopup();
+    draw();
+
+  } catch (err) {
+    console.error("Error loading GeoTIFF:", err);
+
+    let errorMessage = 'Download Gagal!';
+    if (err.name === 'AbortError') {
+      errorMessage = 'Kendala Koneksi (Timeout)!';
+    } else if (err.message) {
+      errorMessage = err.message;
+    }
+
+    if (statusEl) {
+      statusEl.textContent = errorMessage;
+      statusEl.style.color = '#ffb3ba';
+    }
+    if (btnEl) btnEl.disabled = false;
+  }
+}
+
+async function fetchMapsFolderFiles() {
+  const container = document.getElementById('remote-geotiff-container');
+  const listEl = document.getElementById('geotiff-file-list');
+  if (!container || !listEl) return;
+
+  container.style.display = 'block';
+  listEl.innerHTML = '<div style="color: #888; font-size: 10px;">Memuat file...</div>';
+
+  try {
+    const response = await fetch('maps/');
+    if (!response.ok) {
+      console.error(`Fetch maps error! Status: ${response.status} ${response.statusText}`);
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    let tifFiles = [];
+
+    if (contentType && contentType.includes('application/json')) {
+      const files = await response.json();
+      tifFiles = files
+        .map(f => f.name)
+        .filter(name => name.endsWith('.tif') || name.endsWith('.tiff'));
+    } else {
+      const text = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'text/html');
+      const links = Array.from(doc.querySelectorAll('a'));
+      tifFiles = links
+        .map(a => a.getAttribute('href'))
+        .filter(href => href && (href.endsWith('.tif') || href.endsWith('.tiff')));
+    }
+
+    if (tifFiles.length === 0) {
+      listEl.innerHTML = '<div style="color: #aaa; font-size: 10px;">Tidak ada file .tif di folder maps/</div>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    tifFiles.forEach(file => {
+      const fileName = file.split('/').pop();
+      const fileUrl = file.startsWith('http') || file.startsWith('/') ? file : `maps/${file}`;
+      
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'geotiff-file-item';
+      itemDiv.textContent = fileName;
+      itemDiv.onclick = () => loadGeoTiffFromUrl(fileUrl);
+      listEl.appendChild(itemDiv);
+    });
+  } catch (err) {
+    console.error("Detail Error fetchMapsFolderFiles:", err);
+    listEl.innerHTML = `<div style="color: #ffb3ba; font-size: 10px;">Gagal memuat (${err.message})</div>`;
+  }
+}
+
+function snapToNorth() {
+  return new Promise((resolve) => {
+    if (rotation === 0) {
+      animating = false;
+      resolve();
+      return;
+    }
+
+    if (panAnimationFrame) cancelAnimationFrame(panAnimationFrame);
+
+    animating = true;
+    let start = rotation;
+    let diff = -start;
+    
+    if (diff > Math.PI) diff -= 2 * Math.PI;
+    if (diff < -Math.PI) diff += 2 * Math.PI;
+
+    let startTime = null;
+
+    function animate(time) {
+      if (!startTime) startTime = time;
+      let progress = Math.min((time - startTime) / 400, 1); 
+
+      rotation = start + diff * (1 - Math.pow(1 - progress, 3));
+      draw();
+
+      if (progress < 1) {
+        panAnimationFrame = requestAnimationFrame(animate);
+      } else {
+        rotation = 0;
+        animating = false; 
+        panAnimationFrame = null;
+        draw();
+        resolve();
+      }
+    }
+
+    panAnimationFrame = requestAnimationFrame(animate);
+  });
+}
+
+compass.addEventListener('dblclick', snapToNorth);
+compass.addEventListener('mousedown', (e) => {
+  e.preventDefault(); e.stopPropagation(); isRotatingCompass = true;
+  const r = compass.getBoundingClientRect();
+  compassStartAngle = getAngle(r.left + r.width/2, r.top + r.height/2, e.clientX, e.clientY) - rotation;
+});
+compass.addEventListener('mousemove', (e) => {
+  if (!isRotatingCompass) return;
+  const r = compass.getBoundingClientRect();
+  rotation = getAngle(r.left + r.width/2, r.top + r.height/2, e.clientX, e.clientY) - compassStartAngle;
+  draw();
+});
+compass.addEventListener('touchstart', (e) => {
+  e.preventDefault(); e.stopPropagation(); isRotatingCompass = true;
+  const r = compass.getBoundingClientRect();
+  compassStartAngle = getAngle(r.left + r.width/2, r.top + r.height/2, e.touches[0].clientX, e.touches[0].clientY) - rotation;
+}, { passive: false });
+compass.addEventListener('touchmove', (e) => {
+  if (!isRotatingCompass) return;
+  const r = compass.getBoundingClientRect();
+  rotation = getAngle(r.left + r.width/2, r.top + r.height/2, e.touches[0].clientX, e.touches[0].clientY) - compassStartAngle;
+  draw();
+}, { passive: false });
+window.addEventListener('mouseup', () => isRotatingCompass = false);
+window.addEventListener('touchend', () => isRotatingCompass = false);
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const zoom = Math.exp((e.deltaY < 0 ? 1 : -1) * 0.1);
+  const mouseX = e.offsetX - canvas.width / 2;
+  const mouseY = e.offsetY - canvas.height / 2;
+  const rx = mouseX * Math.cos(-rotation) - mouseY * Math.sin(-rotation);
+  const ry = mouseX * Math.sin(-rotation) + mouseY * Math.cos(-rotation);
+  offsetX = rx - (rx - offsetX) * zoom;
+  offsetY = ry - (ry - offsetY) * zoom;
+  scale *= zoom;
+  draw();
+}, { passive: false });
+
+const getTouchDist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 0) { isDragging = true; lastX = e.clientX; lastY = e.clientY; canvas.style.cursor = 'grabbing'; }
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    let dx = e.clientX - lastX, dy = e.clientY - lastY;
+    offsetX += dx * Math.cos(-rotation) - dy * Math.sin(-rotation);
+    offsetY += dx * Math.sin(-rotation) + dy * Math.cos(-rotation);
+    lastX = e.clientX; lastY = e.clientY; draw();
+  } else canvas.style.cursor = 'crosshair';
+});
+canvas.addEventListener('mouseup', () => { isDragging = false; canvas.style.cursor = 'crosshair'; });
+canvas.addEventListener('mouseleave', () => { isDragging = false; canvas.style.cursor = 'crosshair'; });
+
+function getTouchAngle(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.atan2(dy, dx);
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) { 
+    isDragging = true; 
+    lastX = e.touches[0].clientX; 
+    lastY = e.touches[0].clientY; 
+  } else if (e.touches.length === 2) { 
+    isDragging = false; 
+    touchStartDist = getTouchDist(e.touches); 
+    touchStartScale = scale; 
+    touchStartAngle = getTouchAngle(e.touches);
+    touchStartRotation = rotation;
+  }
+}, { passive: true });
+
+canvas.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 1 && isDragging) {
+    let dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
+    offsetX += dx * Math.cos(-rotation) - dy * Math.sin(-rotation);
+    offsetY += dx * Math.sin(-rotation) + dy * Math.cos(-rotation);
+    lastX = e.touches[0].clientX; 
+    lastY = e.touches[0].clientY; 
+    draw();
+  } else if (e.touches.length === 2 && touchStartDist > 0) {
+    if (e.cancelable) e.preventDefault(); 
+
+    const currentAngle = getTouchAngle(e.touches);
+    const angleDiff = currentAngle - touchStartAngle;
+    rotation = touchStartRotation + angleDiff;
+
+    const newDist = getTouchDist(e.touches);
+    const zoom = newDist / touchStartDist;
+    const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - canvas.getBoundingClientRect().left;
+    const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - canvas.getBoundingClientRect().top;
+    const mouseX = midX - logicalW / 2;
+    const mouseY = midY - logicalH / 2;
+    const rx = mouseX * Math.cos(-rotation) - mouseY * Math.sin(-rotation);
+    const ry = mouseX * Math.sin(-rotation) + mouseY * Math.cos(-rotation);
+    
+    let newScale = Math.max(0.000001, Math.min(touchStartScale * zoom, 100000000));
+    let ratio = newScale / scale;
+    
+    offsetX = rx - (rx - offsetX) * ratio;
+    offsetY = ry - (ry - offsetY) * ratio;
+    scale = newScale; 
+
+    draw();
+  }
+}, { passive: false });
+
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+  const centerX = logicalW / 2;
+  const centerY = logicalH / 2;
+  const dx = clickX - centerX;
+  const dy = clickY - centerY;
+  const rx = dx * Math.cos(-rotation) - dy * Math.sin(-rotation);
+  const ry = dx * Math.sin(-rotation) + dy * Math.cos(-rotation);
+
+  const clickWorldX = rx;
+  const clickWorldY = ry;
+
+  const nowTime = Date.now();
+  const hitRadius = 12; 
+
+  Object.values(nodeDataStore).forEach(node => {
+    const pt = node.latest;
+    if (!pt || !pt.lat || !pt.lon) return;
+    if (nowTime - pt.timestamp > 30 * 60 * 1000) return; 
+
+    const nodeScreenX = pt.lon * scale + offsetX;
+    const nodeScreenY = -pt.lat * scale + offsetY;
+    const dist = Math.hypot(clickWorldX - nodeScreenX, clickWorldY - nodeScreenY);
+
+    if (dist <= hitRadius) {
+      focusOnNode(pt.unitName);
+    }
+  });
+});
+
+canvas.addEventListener('touchend', () => { isDragging = false; touchStartDist = 0; });
+canvas.addEventListener('touchcancel', () => { isDragging = false; touchStartDist = 0; });
+
+function toggleGeoTiffPopup() {
+  const pop = document.getElementById('popup-geotiff');
+  if (pop) pop.classList.toggle('show');
+}
+
+document.getElementById('geotiff-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  try {
+    if (typeof GeoTIFF === 'undefined') {
+      return;
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+    const image = await tiff.getImage();
+    const bbox = image.getBoundingBox();
+
+    bounds.minX = bbox[0]; bounds.minY = bbox[1];
+    bounds.maxX = bbox[2]; bounds.maxY = bbox[3];
+
+    const width = image.getWidth(), height = image.getHeight();
+    const rgbData = await image.readRGB();
+
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = width; offCanvas.height = height;
+    const offCtx = offCanvas.getContext('2d');
+    const imgData = offCtx.createImageData(width, height);
+    const data = imgData.data;
+
+    let srcIdx = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = rgbData[srcIdx], g = rgbData[srcIdx + 1], b = rgbData[srcIdx + 2];
+      data[i] = r; data[i + 1] = g; data[i + 2] = b;
+      data[i + 3] = (r === 0 && g === 0 && b === 0) ? 0 : 255;
+      srcIdx += 3;
+    }
+
+    offCtx.putImageData(imgData, 0, 0);
+    geoTiffImage = offCanvas;
+
+    const geoHeight = bounds.maxY - bounds.minY;
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+
+    scale = canvas.height / geoHeight;
+    offsetX = -centerX * scale;
+    offsetY = centerY * scale;
+    hasAutoFit = true;
+
+    toggleGeoTiffPopup();
+    draw();
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+const DEFAULT_PROFILES = [
+  { id: 'def_abc', name: 'abc', transport: 'ws', ip: '10.155.170.228', path: '/ws', port: 15675, username: 'anu', password: 'anu123', anonymous: false, isDefault: true },
+  { id: 'def_hive', name: 'demo', transport: 'wss', ip: '3df654f026a94545b94021cc3015ad04.s1.eu.hivemq.cloud', path: '/mqtt', port: 8884, username: 'demo', password: 'demo5678', anonymous: false, isDefault: true }
+];
+
+let mqttClient = null;
+let isMqttConnected = false;
+let currentProfile = null;
+let userIntentionalDisconnect = false; 
+let reconnectTimer = null;
+let reconnectInterval = 3000;
+
+function getAllProfiles() {
+  const local = JSON.parse(localStorage.getItem('custom_mqtt_profiles') || '[]');
+  return [...DEFAULT_PROFILES, ...local];
+}
+
+function initProfileSelect() {
+  const select = document.getElementById('profile-select');
+  if (!select) return;
+  select.innerHTML = '';
+  getAllProfiles().forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = `${p.name} (${p.transport}://${p.ip}:${p.port})`;
+    select.appendChild(opt);
+  });
+  onProfileSelectChange();
+}
+
+function onProfileSelectChange() {
+  const select = document.getElementById('profile-select');
+  if (!select) return;
+  currentProfile = getAllProfiles().find(p => p.id === select.value);
+}
+
+function toggleProfilePopup() {
+  const popup = document.getElementById('popup-profile');
+  if (popup) popup.classList.toggle('show');
+}
+
+function toggleNodeListPopup() {
+  const popup = document.getElementById('popup-node-list');
+  if (popup) {
+    popup.classList.toggle('show');
+    if (popup.classList.contains('show')) {
+      renderNodeListPopup();
+    }
+  }
+}
+
+function toggleDtListPopup() {
+  const popup = document.getElementById('popup-dt-list');
+  if (popup) {
+    popup.classList.toggle('show');
+    if (popup.classList.contains('show')) {
+      renderDtListPopup();
+    }
+  }
+}
+
+function onBtnClick(id) { 
+  if (id === 2) toggleProfilePopup();
+  else if (id === 3) toggleNodeListPopup();
+  else if (id === 4) toggleDtListPopup();
+}
+
+function updateUIStatus(state, message) {
+  const badge = document.getElementById('mqtt-live-badge');
+  const text = document.getElementById('status-text');
+  const statusPopupText = document.getElementById('mqtt-status-text');
+  const btnConnect = document.getElementById('btn-mqtt-connect');
+
+  if (state === 'connected') {
+    if (badge) badge.className = 'info-left-box status-live';
+    if (text) text.textContent = 'LIVE';
+    if (statusPopupText) { statusPopupText.textContent = 'Connected'; statusPopupText.style.color = '#00ff88'; }
+    if (btnConnect) { btnConnect.textContent = 'Disconnect'; btnConnect.className = 'btn-action btn-danger'; }
+  } else if (state === 'reconnecting') {
+    if (badge) badge.className = 'info-left-box status-reconnecting';
+    if (text) text.textContent = 'RECONNECTING...';
+    if (statusPopupText) { statusPopupText.textContent = message || 'Reconnecting...'; statusPopupText.style.color = '#ffdd94'; }
+  } else { 
+    if (badge) badge.className = 'info-left-box status-off';
+    if (text) text.textContent = 'OFF';
+    if (statusPopupText) { statusPopupText.textContent = 'Disconnected'; statusPopupText.style.color = '#ffb3ba'; }
+    if (btnConnect) { btnConnect.textContent = 'Connect'; btnConnect.className = 'btn-action btn-conn'; }
+  }
+}
+
+function handleConnectDisconnect() {
+  if (isMqttConnected || reconnectTimer) forceDisconnectMQTT();
+  else { userIntentionalDisconnect = false; connectMQTT(); }
+}
+
+function connectMQTT() {
+  if (!currentProfile) { alert("Pilih profil koneksi terlebih dahulu!"); return; }
+  clearTimeout(reconnectTimer);
+  updateUIStatus('reconnecting', 'Connecting...');
+
+  const clientId = "web_client_" + Math.random().toString(16).substr(2, 8);
+  try {
+    mqttClient = new Paho.MQTT.Client(currentProfile.ip, Number(currentProfile.port), currentProfile.path || "/mqtt", clientId);
+    mqttClient.onConnectionLost = onConnectionLost;
+    mqttClient.onMessageArrived = onMessageArrived;
+
+    const options = {
+      useSSL: currentProfile.transport === 'wss',
+      keepAliveInterval: 30,
+      cleanSession: true,
+      onSuccess: onConnectSuccess,
+      onFailure: onConnectFailure,
+      timeout: 5
+    };
+
+    if (!currentProfile.anonymous) {
+      if (currentProfile.username) options.userName = currentProfile.username;
+      if (currentProfile.password) options.password = currentProfile.password;
+    }
+    mqttClient.connect(options);
+  } catch (err) {
+    console.error("MQTT Init Error:", err);
+    triggerAutoReconnect("Error Inisialisasi");
+  }
+}
+
+function onConnectSuccess() {
+  isMqttConnected = true;
+  userIntentionalDisconnect = false;
+  updateUIStatus('connected');
+  mqttClient.subscribe("dla/devstat");
+  mqttClient.subscribe("dla/dispperi");
+  loadDynamicGeoTiff();
+}
+
+function onConnectFailure(err) {
+  isMqttConnected = false;
+  if (!userIntentionalDisconnect) triggerAutoReconnect("Gagal Koneksi, Mencoba Lagi...");
+  else updateUIStatus('disconnected');
+}
+
+function onConnectionLost(response) {
+  isMqttConnected = false;
+  if (!userIntentionalDisconnect) triggerAutoReconnect("Terputus, Reconnecting...");
+  else updateUIStatus('disconnected');
+}
+
+function forceDisconnectMQTT() {
+  userIntentionalDisconnect = true;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (mqttClient) {
+    try {
+      if (mqttClient.isConnected()) {
+        mqttClient.onConnectionLost = () => {}; 
+        mqttClient.onMessageArrived = () => {};
+        mqttClient.disconnect();
+      }
+    } catch (err) {} finally { mqttClient = null; }
+  }
+  isMqttConnected = false;
+  updateUIStatus('disconnected');
+}
+
+function triggerAutoReconnect(reasonText) {
+  if (userIntentionalDisconnect) return;
+  updateUIStatus('reconnecting', reasonText);
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => { if (!userIntentionalDisconnect) connectMQTT(); }, reconnectInterval);
+}
+
+function onMessageArrived(message) {
+  const topic = message.destinationName;
+  const payload = message.payloadString.trim();
+
+  if (topic === "dla/devstat") {
+    const el = document.getElementById('mem-devstat');
+    if (el) el.textContent = payload.substring(0, 15) + "...";
+    processDevstatPayload(payload);
+  } else if (topic === "dla/dispperi") {
+    const el = document.getElementById('mem-dispperi');
+    if (el) el.textContent = payload.substring(0, 15) + "...";
+    processDispPeriPayload(payload);
+  }
+}
+
+function processDispPeriPayload(payload) {
+  const parts = payload.split(';').map(p => p.trim());
+  if (parts.length < 10) return;
+
+  const profileName = parts[parts.length - 1];
+  if (!currentProfile || currentProfile.name !== profileName) return;
+
+  const rawCoords = parts.slice(0, 8);
+  let validPoints = [];
+  rawCoords.forEach(pairStr => {
+    const coords = pairStr.split(',');
+    if (coords.length === 2) {
+      const lat = parseFloat(coords[0].trim()), lon = parseFloat(coords[1].trim());
+      if (!isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) validPoints.push({ lat, lon });
+    }
+  });
+
+  const safeStr = parts[8].split(',');
+  if (safeStr.length === 2) {
+    const sLat = parseFloat(safeStr[0].trim()), sLon = parseFloat(safeStr[1].trim());
+    if (!isNaN(sLat) && !isNaN(sLon) && (sLat !== 0 || sLon !== 0)) currentSafeCoord = { lat: sLat, lon: sLon };
+    else currentSafeCoord = null;
+  }
+
+  if (validPoints.length === 0) {
+    currentDispPeriPoints = []; currentGreenBoxes = []; requestDraw(); return;
+  }
+
+  currentDispPeriPoints = sortPointsNearestNeighbor(validPoints);
+  currentGreenBoxes = calculateIndependentGreenBoxes(currentDispPeriPoints, currentSafeCoord, 15);
+
+  if (!hasAutoFit && !geoTiffImage) {
+    autoFitToPoints(currentDispPeriPoints);
+  }
+  requestDraw();
+}
+
+function calculateIndependentGreenBoxes(points, safeCoord, offsetMeters) {
+  if (points.length < 2) return [];
+  const metersPerLatDegree = 111000;
+  const metersPerLonDegree = 111000 * Math.cos(points[0].lat * Math.PI / 180);
+  const offsetLat = offsetMeters / metersPerLatDegree;
+  const offsetLon = offsetMeters / metersPerLonDegree;
+
+  let side = 1;
+  if (safeCoord) {
+    const avgLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
+    const avgLon = points.reduce((s, p) => s + p.lon, 0) / points.length;
+    const dx = points[points.length - 1].lon - points[0].lon;
+    const dy = points[points.length - 1].lat - points[0].lat;
+    const sx = safeCoord.lon - avgLon, sy = safeCoord.lat - avgLat;
+    side = ((dx * sy) - (dy * sx)) >= 0 ? 1 : -1;
+  }
+
+  const boxes = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i], p2 = points[i + 1];
+    const dx = p2.lon - p1.lon, dy = p2.lat - p1.lat;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) continue;
+
+    const normalX = (-dy / len) * offsetLon * side;
+    const normalY = (dx / len) * offsetLat * side;
+    boxes.push({
+      p1, p2,
+      p1Offset: { lat: p1.lat + normalY, lon: p1.lon + normalX },
+      p2Offset: { lat: p2.lat + normalY, lon: p2.lon + normalX }
+    });
+  }
+  return boxes;
+}
+
+function autoFitToPoints(points) {
+  if (!points || points.length === 0) return;
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+
+  points.forEach(p => {
+    const lat = parseFloat(p.lat), lon = parseFloat(p.lon);
+    if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+      if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon; if (lon > maxLon) maxLon = lon;
+    }
+  });
+
+  if (minLat === Infinity) return;
+
+  let deltaLat = maxLat - minLat, deltaLon = maxLon - minLon;
+  if (deltaLat === 0 && deltaLon === 0) { deltaLat = 0.005; deltaLon = 0.005; }
+  else { deltaLat = Math.max(deltaLat, 0.001); deltaLon = Math.max(deltaLon, 0.001); }
+
+  const centerLon = (minLon + maxLon) / 2;
+  const centerLat = (minLat + maxLat) / 2;
+
+  const scaleY = (canvas.height * 0.6) / deltaLat;
+  const scaleX = (canvas.width * 0.6) / deltaLon;
+
+  scale = Math.min(scaleX, scaleY);
+  offsetX = -centerLon * scale;
+  offsetY = centerLat * scale;
+  hasAutoFit = true;
+  draw();
+}
+
+function sortPointsNearestNeighbor(points) {
+  if (points.length <= 1) return points;
+  let unvisited = [...points];
+  let sorted = [unvisited.shift()];
+  while (unvisited.length > 0) {
+    const lastPoint = sorted[sorted.length - 1];
+    let nearestIdx = 0, minDistance = Infinity;
+    for (let i = 0; i < unvisited.length; i++) {
+      const dist = Math.hypot(unvisited[i].lat - lastPoint.lat, unvisited[i].lon - lastPoint.lon);
+      if (dist < minDistance) { minDistance = dist; nearestIdx = i; }
+    }
+    sorted.push(unvisited[nearestIdx]);
+    unvisited.splice(nearestIdx, 1);
+  }
+  return sorted;
+}
+
+function updateClock() {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const monthNames = ["JAN", "FEB", "MAR", "APR", "MEI", "JUN", "JUL", "AGU", "SEP", "OKT", "NOV", "DES"];
+  const month = monthNames[now.getMonth()];
+
+  const offset = -now.getTimezoneOffset(); 
+  let zona = "";
+  if (offset === 420) zona = "WIB";
+  else if (offset === 480) zona = "WITA";
+  else if (offset === 540) zona = "WIT";
+  else {
+    try {
+      zona = new Intl.DateTimeFormat('id-ID', { timeZoneName: 'short' }).formatToParts(now).find(p => p.type === 'timeZoneName')?.value || "";
+    } catch(e) { zona = ""; }
+  }
+
+  const clockEl = document.getElementById('clock-display');
+  if (clockEl) {
+    clockEl.textContent = ` • ${day} ${month} ${now.getFullYear()} • ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} ${zona}`;
+  }
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+function openEditProfileModal() {
+  const modal = document.getElementById('popup-edit-profile');
+  if (modal) modal.classList.add('show');
+  if (currentProfile) {
+    document.getElementById('edit-modal-title').textContent = "Edit Profil: " + currentProfile.name;
+    document.getElementById('edit-prof-id').value = currentProfile.id;
+    document.getElementById('prof-name').value = currentProfile.name;
+    document.getElementById('prof-transport').value = currentProfile.transport;
+    document.getElementById('prof-ip').value = currentProfile.ip;
+    document.getElementById('prof-path').value = currentProfile.path;
+    document.getElementById('prof-port').value = currentProfile.port;
+    document.getElementById('prof-user').value = currentProfile.username || '';
+    document.getElementById('prof-pass').value = currentProfile.password || '';
+    document.getElementById('prof-anon').checked = currentProfile.anonymous;
+    document.getElementById('btn-delete-profile').style.display = currentProfile.isDefault ? 'none' : 'block';
+    toggleAnonFields(currentProfile.anonymous);
+  }
+}
+
+function openAddProfileModal() {
+  const modal = document.getElementById('popup-edit-profile');
+  if (modal) modal.classList.add('show');
+  document.getElementById('edit-modal-title').textContent = "Tambah Profil Baru";
+  document.getElementById('edit-prof-id').value = '';
+  document.getElementById('prof-name').value = '';
+  document.getElementById('prof-transport').value = 'ws';
+  document.getElementById('prof-ip').value = '';
+  document.getElementById('prof-path').value = '/ws';
+  document.getElementById('prof-port').value = '15675';
+  document.getElementById('prof-user').value = '';
+  document.getElementById('prof-pass').value = '';
+  document.getElementById('prof-anon').checked = false;
+  document.getElementById('btn-delete-profile').style.display = 'none';
+  toggleAnonFields(false);
+}
+
+function closeEditProfileModal() {
+  const modal = document.getElementById('popup-edit-profile');
+  if (modal) modal.classList.remove('show');
+}
+
+function toggleAnonFields(isAnon) {
+  const u = document.getElementById('prof-user'), p = document.getElementById('prof-pass');
+  if (u && p) { u.disabled = isAnon; p.disabled = isAnon; }
+}
+
+function saveProfile() {
+  let id = document.getElementById('edit-prof-id').value;
+  const nameInput = document.getElementById('prof-name').value.trim();
+  if (!nameInput) { alert("Nama Profil wajib diisi!"); return; }
+
+  if (currentProfile && currentProfile.isDefault && id === currentProfile.id) id = ''; 
+  const isNew = !id;
+  const targetId = isNew ? 'custom_' + Date.now() : id;
+
+  const newProf = {
+    id: targetId, name: nameInput,
+    transport: document.getElementById('prof-transport').value,
+    ip: document.getElementById('prof-ip').value.trim(),
+    path: document.getElementById('prof-path').value.trim(),
+    port: document.getElementById('prof-port').value.trim(),
+    username: document.getElementById('prof-user').value.trim(),
+    password: document.getElementById('prof-pass').value.trim(),
+    anonymous: document.getElementById('prof-anon').checked,
+    isDefault: false
+  };
+
+  let local = JSON.parse(localStorage.getItem('custom_mqtt_profiles') || '[]');
+  const idx = local.findIndex(p => p.id === targetId);
+  if (idx >= 0) local[idx] = newProf; else local.push(newProf);
+
+  localStorage.setItem('custom_mqtt_profiles', JSON.stringify(local));
+  initProfileSelect();
+  document.getElementById('profile-select').value = targetId;
+  onProfileSelectChange();
+  closeEditProfileModal();
+}
+
+function deleteProfile() {
+  const id = document.getElementById('edit-prof-id').value;
+  if (!id) return;
+  if (currentProfile && currentProfile.isDefault) { alert("Profil Default tidak bisa dihapus."); return; }
+  let local = JSON.parse(localStorage.getItem('custom_mqtt_profiles') || '[]');
+  local = local.filter(p => p.id !== id);
+  localStorage.setItem('custom_mqtt_profiles', JSON.stringify(local));
+  initProfileSelect();
+  closeEditProfileModal();
+}
+
+function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function processDevstatPayload(payload) {
+  if (!payload) return;
+  const lines = payload.split('\n');
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    if (trimmed.startsWith('NODE')) {
+      const parts = trimmed.split(',').map(p => p.trim());
+      if (parts.length >= 12) {
+        const unitName = parts[0], lon = parseFloat(parts[1]), lat = parseFloat(parts[2]), gpsStatus = parts[3];
+        const uptimeDesi = parseFloat(parts[5]) || 0, uptimeMin = (uptimeDesi / 600).toFixed(1);
+        const activation = parseInt(parts[7]) === 1 ? 1 : 0, version = parts[9], rssi = parts[12]!== undefined? parts[12] : "";
+
+        const now = new Date();
+        const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+
+        if (!nodeDataStore[unitName]) nodeDataStore[unitName] = { history: [], latest: null };
+        const nodeEntry = { unitName, lon, lat, gpsStatus, uptimeMin, activation, version, rssi, timestamp: now.getTime(), timeStr };
+
+        nodeDataStore[unitName].history.push(nodeEntry);
+        if (nodeDataStore[unitName].history.length > 20) nodeDataStore[unitName].history.shift();
+        nodeDataStore[unitName].latest = nodeEntry;
+      }
+    } else if (trimmed.startsWith('DT')) {
+      parseDtLine(trimmed);
+    }
+  });
+
+  if (!hasAutoFit && !geoTiffImage) {
+    const allPoints = [];
+    Object.values(nodeDataStore).forEach(node => {
+      if (node.latest && node.latest.lat && node.latest.lon) allPoints.push({ lat: node.latest.lat, lon: node.latest.lon });
+    });
+    Object.values(dtDataStore).forEach(dt => {
+      if (dt.latest && dt.latest.lat && dt.latest.lon) allPoints.push({ lat: dt.latest.lat, lon: dt.latest.lon });
+    });
+    if (allPoints.length > 0) autoFitToPoints(allPoints);
+  }
+
+  updateNodeRTKBar();
+  updateDtRTKBar();
+  if (!isDragging && touchStartDist === 0) {
+    const nodePopup = document.getElementById('popup-node-list');
+    if (nodePopup && nodePopup.classList.contains('show')) {
+      renderNodeListPopup();
+    }
+
+    const dtPopup = document.getElementById('popup-dt-list');
+    if (dtPopup && dtPopup.classList.contains('show')) {
+      renderDtListPopup();
+    }
+  }
+  requestDraw();
+}
+
+function updateNodeRTKBar() {
+  let total = 0, rtkFix = 0;
+  Object.values(nodeDataStore).forEach(node => {
+    node.history.forEach(msg => { total++; if (msg.gpsStatus === 'RTK FIX') rtkFix++; });
+  });
+  const el = document.getElementById('rtk-node-val');
+  if (el) el.textContent = total === 0 ? '0%' : `${Math.round((rtkFix / total) * 100)}%`;
+}
+
+function renderNodeListPopup() {
+  const container = document.getElementById('node-list-container');
+  if (!container) return;
+
+  const keys = Object.keys(nodeDataStore);
+  if (keys.length === 0) {
+    container.innerHTML = '<div style="text-align: center; color: #888; padding: 10px;">Belum ada data Rover</div>';
+    return;
+  }
+
+  let html = '';
+  keys.forEach(unitName => {
+    const item = nodeDataStore[unitName].latest;
+    const isChecked = item.activation === 1 ? 'checked' : '';
+    const safeId = unitName.replace(/[^a-zA-Z0-9]/g, '_');
+    const isBlinking = blinkingNodeMap[unitName] ? 'blinking-toggle' : '';
+    const isDisabled = blinkingNodeMap[unitName] ? 'disabled' : '';
+
+    html += `
+      <div class="node-item">
+        <div class="node-info">
+          <div class="node-title" style="cursor: pointer;" onclick="focusOnNode('${item.unitName}')">${item.unitName}</div>
+          <div class="node-subtext">Last ${item.timeStr} ${item.gpsStatus} ${item.uptimeMin}min ${item.version} ${item.rssi}</div>
+        </div>
+        <label class="switch ${isBlinking}">
+          <input type="checkbox" id="toggle-node-${safeId}" ${isChecked} ${isDisabled} onchange="toggleNodeActivation('${item.unitName}', this.checked)">
+          <span class="slider"></span>
+        </label>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+function toggleNodeActivation(unitName, isChecked) {
+  if (!mqttClient || !isMqttConnected) {
+    alert("Koneksi MQTT belum terhubung!");
+    renderNodeListPopup();
+    return;
+  }
+
+  if (nodeDataStore[unitName] && nodeDataStore[unitName].latest) {
+    nodeDataStore[unitName].latest.activation = isChecked ? 1 : 0;
+  }
+
+  const macSuffix = unitName.includes('-') ? unitName.split('-')[1] : unitName;
+  const payloadStr = `${macSuffix},${isChecked ? 'on' : 'off'}`;
+  const topic = 'dla/posenable';
+
+  const sendMqttMessage = () => {
+    try {
+      const message = new Paho.MQTT.Message(payloadStr);
+      message.destinationName = topic;
+      mqttClient.send(message);
+    } catch (err) { console.error("Gagal mengirim MQTT:", err); }
+  };
+
+  sendMqttMessage();
+  let publishCount = 1;
+  const publishInterval = setInterval(() => {
+    if (publishCount < 3) {
+      if (mqttClient && isMqttConnected) sendMqttMessage();
+      publishCount++;
+    } else clearInterval(publishInterval);
+  }, 3000);
+
+  startToggleBlinking(unitName, 10000);
+}
+
+function startToggleBlinking(unitName, durationMs) {
+  blinkingNodeMap[unitName] = true;
+  renderNodeListPopup();
+
+  if (blinkingNodeTimers[unitName]) clearTimeout(blinkingNodeTimers[unitName].timeout);
+
+  const timeout = setTimeout(() => {
+    delete blinkingNodeMap[unitName];
+    delete blinkingNodeTimers[unitName];
+    renderNodeListPopup();
+  }, durationMs);
+
+  blinkingNodeTimers[unitName] = { timeout };
+}
+
+function formatNodeName(unitName) {
+  if (!unitName) return '';
+  const match = unitName.match(/\d+/);
+  return match ? parseInt(match[0], 10).toString().padStart(2, '0') : unitName;
+}
+
+function formatDtName(unitName) {
+  return unitName ? unitName.split('-')[0] : '';
+}
+
+function getStatusColor(status) {
+  switch (status) {
+    case 'ON AWARENESS': return '#9810F1';
+    case 'CLOSING': return '#F412F3';
+    case 'ON PERIMETER': return '#2CFAF4';
+    case 'CROSSING': return '#ff0000';
+    default: return '#ffffff';
+  }
+}
+
+function parseDtLine(line) {
+  if (!line.startsWith('DT')) return;
+  const parts = line.split(',').map(p => p.trim());
+  if (parts.length < 15) return;
+
+  const unitName = parts[0];
+  const lon = parseFloat(parts[1]);
+  const lat = parseFloat(parts[2]);
+  const gpsStatus = parts[3];
+  const uptimeDesi = parseFloat(parts[5]) || 0;
+  const uptimeMin = (uptimeDesi / 600).toFixed(1);
+  const distance = parseFloat(parts[7]) || 0;
+  const posStatus = parts[8];
+  const version = parts[9];
+  const speed = parseFloat(parts[12]) || 0;
+  const rssi = parts[14];
+
+  const now = new Date();
+  const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
+                  String(now.getMinutes()).padStart(2, '0') + ':' +
+                  String(now.getSeconds()).padStart(2, '0');
+
+  const dtEntry = {
+    unitName, lon, lat, gpsStatus, uptimeMin, distance, posStatus, version, speed, rssi,
+    timestamp: now.getTime(), timeStr
+  };
+
+  if (!dtDataStore[unitName]) dtDataStore[unitName] = { history: [], latest: null };
+
+  dtDataStore[unitName].history.push(dtEntry);
+  if (dtDataStore[unitName].history.length > 10) dtDataStore[unitName].history.shift();
+  dtDataStore[unitName].latest = dtEntry;
+}
+
+function updateDtRTKBar() {
+  let total = 0, rtkFix = 0;
+  Object.values(dtDataStore).forEach(dt => {
+    dt.history.forEach(msg => { total++; if (msg.gpsStatus === 'RTK FIX') rtkFix++; });
+  });
+  const el = document.getElementById('rtk-dt-val');
+  if (el) el.textContent = total === 0 ? '0%' : `${Math.round((rtkFix / total) * 100)}%`;
+}
+
+function renderDtListPopup() {
+  const container = document.getElementById('dt-list-container');
+  if (!container) return;
+
+  const keys = Object.keys(dtDataStore);
+  if (keys.length === 0) {
+    container.innerHTML = '<div style="text-align: center; color: #888; padding: 10px;">Belum ada data DT MIR</div>';
+    return;
+  }
+
+  const now = Date.now();
+  let html = '';
+  keys.forEach(unitName => {
+    const item = dtDataStore[unitName].latest;
+    const isOnline = (now - item.timestamp) < 30000;
+    const dotClass = isOnline ? 'active' : 'inactive';
+
+    html += `
+      <div class="dt-item" onclick="focusOnDt('${unitName}')">
+        <div class="node-info">
+          <div class="node-title">${item.unitName}</div>
+          <div class="node-subtext">Last ${item.timeStr} ${item.gpsStatus} ${item.uptimeMin}min ${item.version}</div>
+          <div class="node-subtext">${item.distance}m ${item.posStatus} ${item.speed}kmh ${item.rssi}</div>
+        </div>
+        <span class="dt-status-dot ${dotClass}"></span>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+async function focusOnDt(unitName) {
+  if (!dtDataStore[unitName] || !dtDataStore[unitName].latest) return;
+  const target = dtDataStore[unitName].latest;
+
+  if (scale <= 1) { scale = 50000; } 
+
+  animating = false;
+  await snapToNorth();
+  panTo(target.lon, target.lat, 2000);
+}
+
+let panAnimationFrame = null;
+
+function panTo(targetLon, targetLat, duration = 800) {
+  const endOffsetX = -targetLon * scale;
+  const endOffsetY = targetLat * scale;
+
+  const startOffsetX = offsetX;
+  const startOffsetY = offsetY;
+  const startTime = performance.now();
+
+  if (panAnimationFrame) cancelAnimationFrame(panAnimationFrame);
+
+  function animate(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+
+    const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+    offsetX = startOffsetX + (endOffsetX - startOffsetX) * easeProgress;
+    offsetY = startOffsetY + (endOffsetY - startOffsetY) * easeProgress;
+
+    draw();
+
+    if (progress < 1) {
+      panAnimationFrame = requestAnimationFrame(animate);
+    } else {
+      panAnimationFrame = null;
+    }
+  }
+
+  panAnimationFrame = requestAnimationFrame(animate);
+}
+
+async function focusOnNode(unitName) {
+  if (!nodeDataStore[unitName] || !nodeDataStore[unitName].latest) return;
+  const target = nodeDataStore[unitName].latest;
+
+  if (scale <= 1) { scale = 50000; } 
+
+  animating = false;
+  await snapToNorth();
+  panTo(target.lon, target.lat, 2000);
+}
+
+function downloadKMLBoundary(){
+  if(!currentDispPeriPoints || currentDispPeriPoints.length===0){
+    alert('Boundary belum ada (dispperi kosong)');
+    return;
+  }
+  const tag = (currentProfile && currentProfile.name)? currentProfile.name : 'boundary';
+  const toCoord = p => `${p.lon.toFixed(8)},${p.lat.toFixed(8)},0`;
+  const redCoords = currentDispPeriPoints.map(toCoord).join(' ');
+  const safe = currentSafeCoord || currentDispPeriPoints[0];
+  let greenCoords = '';
+  if(currentGreenBoxes && currentGreenBoxes.length>0){
+    const offPoints = currentGreenBoxes.map(b=>b.p1Offset);
+    offPoints.push(currentGreenBoxes[currentGreenBoxes.length-1].p2Offset);
+    greenCoords = offPoints.map(toCoord).join(' ');
+  }
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>${tag}</name>
+  <Style id="redLine"><LineStyle><color>ff2222ff</color><width>3</width></LineStyle></Style>
+  <Style id="greenLine"><LineStyle><color>ff88ff00</color><width>3</width></LineStyle></Style>
+  <Placemark><name>Boundary - Garis Merah</name><styleUrl>#redLine</styleUrl><LineString><tessellate>1</tessellate><coordinates>${redCoords}</coordinates></LineString></Placemark>
+  ${greenCoords? `<Placemark><name>Offset 15m - Garis Hijau</name><styleUrl>#greenLine</styleUrl><LineString><tessellate>1</tessellate><coordinates>${greenCoords}</coordinates></LineString></Placemark>` : ''}
+</Document>
+</kml>`;
+  const blob = new Blob([kml], {type: 'application/vnd.google-earth.kml+xml'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `${tag}_boundary.kml`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+setInterval(()=>{
+  const btn = document.getElementById('btn-kml-boundary');
+  if(btn) btn.disabled =!(currentDispPeriPoints && currentDispPeriPoints.length>0);
+}, 1000);
+
+
+function draw() {
+	if(followMode && selectedUnitKey){
+			const followStore = nodeDataStore[selectedUnitKey]?.latest || dtDataStore[selectedUnitKey]?.latest;
+			if(followStore){
+				const targetX = -followStore.lon * scale;
+				const targetY = followStore.lat * scale;
+
+				offsetX = offsetX + (targetX - offsetX) * 0.08;
+				offsetY = offsetY + (targetY - offsetY) * 0.08;
+			}
+	}
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, logicalW, logicalH);
+  ctx.save();
+  ctx.translate(logicalW / 2, logicalH / 2);
+  ctx.rotate(rotation);
+
+  const hasGeoTiff = (geoTiffImage && bounds.maxX !== 0);
+  const hasPoints = (currentDispPeriPoints && currentDispPeriPoints.length > 0);
+  
+  const activeNodes = Object.values(nodeDataStore)
+    .map(n => n.latest)
+    .filter(pt => pt && pt.lat && pt.lon);
+  
+  const activeDts = Object.values(dtDataStore)
+    .map(d => d.latest)
+    .filter(pt => pt && pt.lat && pt.lon);
+
+  const hasNodes = activeNodes.length > 0;
+  const hasDts = activeDts.length > 0;
+
+  if (hasGeoTiff || hasPoints || hasNodes || hasDts) {
+
+    // 1. grid
+    ctx.save();
+    // Warna grid diperhalus/disamarkan mendekati hitam
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'; 
+    ctx.lineWidth = 1;
+
+    let refLat = 0;
+    if (hasPoints) refLat = currentDispPeriPoints[0].lat;
+    else if (hasNodes) refLat = activeNodes[0].lat;
+    else if (hasDts) refLat = activeDts[0].lat;
+    else if (hasGeoTiff) refLat = (bounds.minY + bounds.maxY) / 2;
+
+    const stepLat = 20 / 111000; 
+    const stepLon = 20 / (111000 * Math.cos(refLat * Math.PI / 180) || 1); 
+
+    const halfW = (canvas.width / 2) / scale;
+    const halfH = (canvas.height / 2) / scale;
+    const worldCenterX = -offsetX / scale;
+    const worldCenterY = offsetY / scale;
+
+    const minWorldX = Math.floor((worldCenterX - halfW) / stepLon) * stepLon;
+    const maxWorldX = Math.ceil((worldCenterX + halfW) / stepLon) * stepLon;
+    const minWorldY = Math.floor((worldCenterY - halfH) / stepLat) * stepLat;
+    const maxWorldY = Math.ceil((worldCenterY + halfH) / stepLat) * stepLat;
+
+    ctx.beginPath();
+    for (let wx = minWorldX; wx <= maxWorldX; wx += stepLon) {
+      const screenX = wx * scale + offsetX;
+      ctx.moveTo(screenX, -canvas.height); ctx.lineTo(screenX, canvas.height);
+    }
+    for (let wy = minWorldY; wy <= maxWorldY; wy += stepLat) {
+      const screenY = -wy * scale + offsetY;
+      ctx.moveTo(-canvas.width, screenY); ctx.lineTo(-canvas.width + canvas.width * 2, screenY);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. geotiff
+    if (hasGeoTiff) {
+      const drawMinX = bounds.minX * scale + offsetX;
+      const drawMaxX = bounds.maxX * scale + offsetX;
+      const drawMinY = -bounds.maxY * scale + offsetY;
+      const drawMaxY = -bounds.minY * scale + offsetY;
+      ctx.drawImage(geoTiffImage, drawMinX, drawMinY, drawMaxX - drawMinX, drawMaxY - drawMinY);
+    }
+
+    // 3. point diatas layer
+    if (hasPoints) {
+      ctx.save();
+      if (currentGreenBoxes && currentGreenBoxes.length > 0) {
+        ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 1.5;
+        currentGreenBoxes.forEach(box => {
+          const rx1 = box.p1.lon * scale + offsetX, ry1 = -box.p1.lat * scale + offsetY;
+          const rx2 = box.p2.lon * scale + offsetX, ry2 = -box.p2.lat * scale + offsetY;
+          const gx1 = box.p1Offset.lon * scale + offsetX, gy1 = -box.p1Offset.lat * scale + offsetY;
+          const gx2 = box.p2Offset.lon * scale + offsetX, gy2 = -box.p2Offset.lat * scale + offsetY;
+
+          ctx.beginPath(); ctx.moveTo(rx1, ry1); ctx.lineTo(gx1, gy1); ctx.lineTo(gx2, gy2); ctx.lineTo(rx2, ry2); ctx.stroke();
+
+          ctx.save();
+          ctx.translate((rx1 + gx1) / 2, (ry1 + gy1) / 2);
+          ctx.rotate(-rotation);
+          ctx.font = '10px monospace'; ctx.fillStyle = '#ffcc00';
+          ctx.fillText("15.0m", 4, 0);
+          ctx.restore();
+        });
+      }
+
+      ctx.strokeStyle = '#ff2222'; ctx.lineWidth = 4;
+      ctx.beginPath();
+      currentDispPeriPoints.forEach((pt, index) => {
+        const screenX = pt.lon * scale + offsetX, screenY = -pt.lat * scale + offsetY;
+        if (index === 0) ctx.moveTo(screenX, screenY); else ctx.lineTo(screenX, screenY);
+      });
+      ctx.stroke();
+
+      for (let i = 0; i < currentDispPeriPoints.length - 1; i++) {
+        const p1 = currentDispPeriPoints[i], p2 = currentDispPeriPoints[i + 1];
+        const x1 = p1.lon * scale + offsetX, y1 = -p1.lat * scale + offsetY;
+        const x2 = p2.lon * scale + offsetX, y2 = -p2.lat * scale + offsetY;
+        const distMeters = getDistanceInMeters(p1.lat, p1.lon, p2.lat, p2.lon);
+
+        ctx.save();
+        ctx.translate((x1 + x2) / 2, (y1 + y2) / 2);
+        ctx.rotate(-rotation);
+        ctx.font = '10px monospace'; ctx.fillStyle = '#ffcc00';
+        ctx.fillText(`${distMeters.toFixed(1)}m`, -12, -6);
+        ctx.restore();
+      }
+
+      const boxSize = 10;
+      currentDispPeriPoints.forEach((pt, index) => {
+        const screenX = pt.lon * scale + offsetX, screenY = -pt.lat * scale + offsetY;
+        ctx.fillStyle = '#ff2222';
+        ctx.fillRect(screenX - boxSize / 2, screenY - boxSize / 2, boxSize, boxSize);
+
+        if (index === 0) {
+          ctx.save();
+          ctx.translate(screenX, screenY); ctx.rotate(-rotation);
+          ctx.fillStyle = '#00d8ff'; ctx.font = '9px monospace';
+          ctx.fillText(`${pt.lat.toFixed(6)}`, 8, -2);
+          ctx.fillText(`${pt.lon.toFixed(6)}`, 8, 8);
+          ctx.restore();
+        }
+      });
+
+      if (currentSafeCoord) {
+        const sx = currentSafeCoord.lon * scale + offsetX, sy = -currentSafeCoord.lat * scale + offsetY;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy - 20); ctx.stroke();
+
+        ctx.fillStyle = '#00ff88';
+        ctx.beginPath(); ctx.moveTo(sx, sy - 20); ctx.lineTo(sx + 14, sy - 14); ctx.lineTo(sx, sy - 8); ctx.closePath(); ctx.fill();
+
+        ctx.save();
+        ctx.translate(sx + 18, sy - 10); ctx.rotate(-rotation);
+        ctx.fillStyle = '#00ff88'; ctx.font = 'bold 11px sans-serif';
+        ctx.fillText("SAFECOORD", 0, 0);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    const nowTime = Date.now();
+    activeNodes.forEach(pt => {
+      if (nowTime - pt.timestamp > 30 * 60 * 1000) return;
+
+      const screenX = pt.lon * scale + offsetX;
+      const screenY = -pt.lat * scale + offsetY;
+
+      let dotColor = '#666666';
+      if (pt.activation === 1) {
+        dotColor = (pt.gpsStatus === 'RTK FIX') ? '#00ff88' : '#ffcc00';
+      }
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 6, 0, 2 * Math.PI);
+      ctx.fillStyle = dotColor; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+
+      const shortName = formatNodeName(pt.unitName);
+      ctx.translate(screenX, screenY); ctx.rotate(-rotation);
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px monospace';
+      ctx.fillText(shortName, 10, 4);
+      ctx.restore();
+    });
+
+    Object.values(dtDataStore).forEach(dtObj => {
+      const history = dtObj.history;
+      if (history.length === 0) return;
+
+      const latest = dtObj.latest;
+      const ageLatest = nowTime - latest.timestamp;
+      if (ageLatest > 20000) return;
+
+      const baseColor = getStatusColor(latest.posStatus);
+
+      history.forEach((pt, index) => {
+        const ptAge = nowTime - pt.timestamp;
+        if (ptAge > 20000) return;
+
+        const screenX = pt.lon * scale + offsetX;
+        const screenY = -pt.lat * scale + offsetY;
+        const isLatest = (index === history.length - 1);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 6, 0, 2 * Math.PI);
+
+        if (isLatest) {
+          if (ptAge <= 4000) {
+            ctx.fillStyle = baseColor;
+            ctx.shadowColor = baseColor;
+            ctx.shadowBlur = 10;
+          } else {
+            ctx.fillStyle = '#555555';
+          }
+        } else {
+          ctx.fillStyle = '#333333';
+        }
+
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = isLatest ? '#ffffff' : 'rgba(255,255,255,0.2)';
+        ctx.stroke();
+
+        if (isLatest) {
+          const shortName = formatDtName(pt.unitName);
+          ctx.translate(screenX, screenY); ctx.rotate(-rotation);
+          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px monospace';
+          ctx.fillText(shortName, 10, 4);
+        }
+        ctx.restore();
+      });
+    });
+  }
+
+  ctx.restore();
+  if (compass) compass.style.transform = `rotate(${rotation}rad)`;
+  if (typeof updatePopupPosition === 'function') {
+    updatePopupPosition();
+  }
+  
+  if(followMode){
+    const s = nodeDataStore[selectedUnitKey]?.latest || dtDataStore[selectedUnitKey]?.latest;
+    if(s){
+      const tx = -s.lon * scale;
+      const ty = -s.lat * scale; // sengaja minus buat cek jarak aja
+      if(Math.abs(tx - offsetX) > 0.5){
+        requestAnimationFrame(draw);
+      }
+    }
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  resize();
+  initProfileSelect();
+  updateClock();
+  setInterval(updateClock, 1000);
+});
+
+let lastDrawAt = Date.now();
+const _origDraw = draw;
+draw = function(){
+  lastDrawAt = Date.now();
+  return _origDraw.apply(this, arguments);
+};
+
+setInterval(()=>{ if(Date.now() - lastDrawAt > 2000){ requestDraw(); }}, 2000);
+
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js'); }
+
+let deferredPrompt;
+const btnInstall = document.getElementById('btnInstall');
+
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredPrompt = e;
+  btnInstall.style.display = 'block'; 
+});
+
+btnInstall.addEventListener('click', async ()=>{
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  console.log('Install:', outcome);
+  deferredPrompt = null;
+  btnInstall.style.display = 'none';
+});
+
+</script>
+<footer>© 2026 GPRZ | v2.1</footer>
+</body>
+</html>
