@@ -665,9 +665,6 @@ async function loadGeoTiffFromUrl(url) {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); 
-
-    console.log("Mengunduh dari URL:", formattedUrl);
-
     const response = await fetch(formattedUrl, { signal: controller.signal });
     clearTimeout(timeoutId); 
 
