@@ -302,9 +302,10 @@
   <div style="margin: 10px 0; border-top: 1px solid rgba(255,255,255,0.15);"></div>
   
   <label>Atau Load Manual</label>
-  <input type="file" id="geotiff-input" accept=".tif,.tiff">
+  <div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
+  <input type="file" id="geotiff-input" accept=".tif,.tiff" style="flex:1; font-size:11px; min-width:0;">
 
-  <button id="btnInstall" style="display:none; width:100%; margin-top:10px; padding:8px; font-size:11px; font-weight:600; background:#00ff88; color:#000; border:none; border-radius:6px; cursor:pointer;">
+  <button id="btnInstall" style="display:none; padding:7px 10px; font-size:11px; font-weight:600; background:#234d35; color:#c8ffda; border:1px solid #3a7a53; border-radius:6px; cursor:pointer; box-shadow:0 0 6px rgba(46,213,115,0.3); white-space:nowrap;">
     Install App
   </button>
   </div>
@@ -419,29 +420,24 @@
 </div>
 
 <script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    const swCode = `
-      const CACHE_NAME = 'offline-libs-v1';
-      const URLS_TO_CACHE = [
-        'https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js',
-        'https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js'
-      ];
-      self.addEventListener('install', (event) => {
-        event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(URLS_TO_CACHE)));
-        self.skipWaiting();
-      });
-      self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
-      self.addEventListener('fetch', (event) => {
-        event.respondWith(
-          caches.match(event.request).then((cached) => cached || fetch(event.request))
-        );
-      });
-    `;
-    const blob = new Blob([swCode], { type: 'application/javascript' });
-    navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => console.error(err));
-  });
-}
+const CACHE_NAME = 'offline-libs-v1';
+const URLS_TO_CACHE = [
+  'https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js'
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(URLS_TO_CACHE)).catch(()=>{})
+  );
+  self.skipWaiting();
+});
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request).then((cached) => cached || fetch(event.request))
+  );
+});
 
 const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d'), compass = document.getElementById('compass');
 let scale = 1, offsetX = 0, offsetY = 0, rotation = 0, isDragging = false, lastX = 0, lastY = 0;
@@ -2081,7 +2077,7 @@ const btnInstall = document.getElementById('btnInstall');
 window.addEventListener('beforeinstallprompt', (e)=>{
   e.preventDefault();
   deferredPrompt = e;
-  btnInstall.style.display = 'block'; 
+  btnInstall.style.display = 'inline-flex'; 
 });
 
 btnInstall.addEventListener('click', async ()=>{
