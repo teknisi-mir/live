@@ -420,29 +420,24 @@
 </div>
 
 <script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    const swCode = `
-      const CACHE_NAME = 'offline-libs-v1';
-      const URLS_TO_CACHE = [
-        'https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js',
-        'https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js'
-      ];
-      self.addEventListener('install', (event) => {
-        event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(URLS_TO_CACHE)));
-        self.skipWaiting();
-      });
-      self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
-      self.addEventListener('fetch', (event) => {
-        event.respondWith(
-          caches.match(event.request).then((cached) => cached || fetch(event.request))
-        );
-      });
-    `;
-    const blob = new Blob([swCode], { type: 'application/javascript' });
-    navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => console.error(err));
-  });
-}
+const CACHE_NAME = 'offline-libs-v1';
+const URLS_TO_CACHE = [
+  'https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js'
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(URLS_TO_CACHE)).catch(()=>{})
+  );
+  self.skipWaiting();
+});
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request).then((cached) => cached || fetch(event.request))
+  );
+});
 
 const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d'), compass = document.getElementById('compass');
 let scale = 1, offsetX = 0, offsetY = 0, rotation = 0, isDragging = false, lastX = 0, lastY = 0;
