@@ -301,14 +301,13 @@
   </div>
   <div style="margin: 10px 0; border-top: 1px solid rgba(255,255,255,0.15);"></div>
   
-	<label>Atau Load Manual</label>
-	<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
-	  <input type="file" id="geotiff-input" accept=".tif,.tiff" style="flex:1; font-size:11px; min-width:0;">
-	
-	  <button id="btnInstall" style="display:none; padding:7px 10px; font-size:11px; font-weight:600; background:#234d35; color:#c8ffda; border:1px solid #3a7a53; border-radius:6px; cursor:pointer; box-shadow:0 0 6px rgba(46,213,115,0.3); white-space:nowrap;">
-	    Install app
-	  </button>
-	</div>
+  <label>Atau Load Manual</label>
+  <input type="file" id="geotiff-input" accept=".tif,.tiff">
+
+  <button id="btnInstall" style="display:none; width:100%; margin-top:10px; padding:8px; font-size:11px; font-weight:600; background:#00ff88; color:#000; border:none; border-radius:6px; cursor:pointer;">
+    Install App
+  </button>
+  </div>
 
   <div id="floating-bar">
     <button class="btn-pastel btn-pastel-2" onclick="onBtnClick(2)"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2082,7 +2081,7 @@ const btnInstall = document.getElementById('btnInstall');
 window.addEventListener('beforeinstallprompt', (e)=>{
   e.preventDefault();
   deferredPrompt = e;
-  btnInstall.style.display = 'inline-flex'; 
+  btnInstall.style.display = 'block'; 
 });
 
 btnInstall.addEventListener('click', async ()=>{
