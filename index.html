@@ -155,7 +155,7 @@
     100% { opacity: 0.3; transform: scale(0.9); }
   }
 
-  #popup-node-list { bottom: 85px; left: 20px; transform: none; width: 330px; max-height: 380px; overflow-y: auto; }
+  #popup-node-list { bottom: 85px; left: 20px; transform: none; width: 330px; top: 50%; max-height: none; overflow-y: auto; }
   .node-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
   .node-item:last-child { border-bottom: none; }
   .node-info { display: flex; flex-direction: column; gap: 2px; }
@@ -172,7 +172,7 @@
   .blinking-toggle { animation: toggleBlink 0.8s infinite alternate; pointer-events: none; opacity: 0.6; }
   @keyframes toggleBlink { 0% { opacity: 0.3; transform: scale(0.98); } 100% { opacity: 1; transform: scale(1); } }
 
-  #popup-dt-list { bottom: 85px; right: 20px; left: auto; transform: none; width: 320px; max-height: 400px; overflow-y: auto; }
+  #popup-dt-list { bottom: 85px; right: 20px; left: auto; transform: none; width: 320px; top: 50%; max-height: none; overflow-y: auto; }
   .dt-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); cursor: pointer; transition: background 0.2s; }
   .dt-item:hover { background: rgba(255, 255, 255, 0.05); }
   .dt-item:last-child { border-bottom: none; }
@@ -402,7 +402,7 @@
     </div>
   </div>
   <div class="popup-body" id="dt-list-container"></div>
-</div>
+  </div>
 </div>
 
 <div id="unit-popup" class="unit-popup">
@@ -2127,6 +2127,6 @@ btnInstall.addEventListener('click', async ()=>{
 });
 
 </script>
-<footer>© 2026 GPRZ | v2.2</footer>
+<footer>© 2026 GPRZ | v2.3</footer>
 </body>
 </html>
