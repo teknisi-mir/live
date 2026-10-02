@@ -2035,7 +2035,6 @@ function draw() {
         ctx.fillText("SAFECOORD", 0, 0);
         ctx.restore();
       }
-      ctx.restore();
     }
 
     const nowTime = Date.now();
@@ -2111,8 +2110,7 @@ function draw() {
         ctx.restore();
       });
     });
-  }
-
+  
   ctx.restore();
   if (compass) compass.style.transform = `rotate(${rotation}rad)`;
   if (typeof updatePopupPosition === 'function') {
