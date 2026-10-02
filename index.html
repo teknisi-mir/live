@@ -1264,34 +1264,43 @@ function processDispPeriPayload(payload) {
 
 function calculateIndependentGreenBoxes(points, safeCoord, offsetMeters) {
   if (points.length < 2) return [];
-  const metersPerLatDegree = 111000;
-  const metersPerLonDegree = 111000 * Math.cos(points[0].lat * Math.PI / 180);
-  const offsetLat = offsetMeters / metersPerLatDegree;
-  const offsetLon = offsetMeters / metersPerLonDegree;
 
-  let side = 1;
-  if (safeCoord) {
-    const avgLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
-    const avgLon = points.reduce((s, p) => s + p.lon, 0) / points.length;
-    const dx = points[points.length - 1].lon - points[0].lon;
-    const dy = points[points.length - 1].lat - points[0].lat;
-    const sx = safeCoord.lon - avgLon, sy = safeCoord.lat - avgLat;
-    side = ((dx * sy) - (dy * sx)) >= 0 ? 1 : -1;
-  }
+  const metersPerLatDegree = 111000;
+  const getMetersPerLon = (lat) => 111000 * Math.cos(lat * Math.PI / 180);
 
   const boxes = [];
+
   for (let i = 0; i < points.length - 1; i++) {
-    const p1 = points[i], p2 = points[i + 1];
-    const dx = p2.lon - p1.lon, dy = p2.lat - p1.lat;
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const dx = p2.lon - p1.lon;
+    const dy = p2.lat - p1.lat;
     const len = Math.hypot(dx, dy);
     if (len === 0) continue;
 
+    const avgLat = (p1.lat + p2.lat) / 2;
+    const avgLon = (p1.lon + p2.lon) / 2;
+    const metersPerLonDegree = getMetersPerLon(avgLat);
+    const offsetLat = offsetMeters / metersPerLatDegree;
+    const offsetLon = offsetMeters / metersPerLonDegree;
+
+    let side = 1;
+    if (safeCoord) {
+      const sx = safeCoord.lon - avgLon;
+      const sy = safeCoord.lat - avgLat;
+      const cross = dx * sy - dy * sx; // >0 = safe di kiri
+      side = cross >= 0? 1 : -1;
+    }
+
     const normalX = (-dy / len) * offsetLon * side;
     const normalY = (dx / len) * offsetLat * side;
+
     boxes.push({
       p1, p2,
       p1Offset: { lat: p1.lat + normalY, lon: p1.lon + normalX },
-      p2Offset: { lat: p2.lat + normalY, lon: p2.lon + normalX }
+      p2Offset: { lat: p2.lat + normalY, lon: p2.lon + normalX },
+      side: side > 0? 'LEFT' : 'RIGHT',
+      crossCheck: true
     });
   }
   return boxes;
