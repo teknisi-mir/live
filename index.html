@@ -1953,26 +1953,35 @@ function draw() {
     }
 
     // 3. point diatas layer
-    if (hasPoints) {
-      ctx.save();
-      if (currentGreenBoxes && currentGreenBoxes.length > 0) {
-        ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 1.5;
-        currentGreenBoxes.forEach(box => {
-          const rx1 = box.p1.lon * scale + offsetX, ry1 = -box.p1.lat * scale + offsetY;
-          const rx2 = box.p2.lon * scale + offsetX, ry2 = -box.p2.lat * scale + offsetY;
-          const gx1 = box.p1Offset.lon * scale + offsetX, gy1 = -box.p1Offset.lat * scale + offsetY;
-          const gx2 = box.p2Offset.lon * scale + offsetX, gy2 = -box.p2Offset.lat * scale + offsetY;
+  	if (currentGreenBoxes && currentGreenBoxes.length > 0) {
+		currentGreenBoxes.forEach(box => {
+		const rx1 = box.p1.lon * scale + offsetX, ry1 = -box.p1.lat * scale + offsetY;
+		const rx2 = box.p2.lon * scale + offsetX, ry2 = -box.p2.lat * scale + offsetY;
+		const gx1 = box.p1Offset.lon * scale + offsetX, gy1 = -box.p1Offset.lat * scale + offsetY;
+		const gx2 = box.p2Offset.lon * scale + offsetX, gy2 = -box.p2Offset.lat * scale + offsetY;
 
-          ctx.beginPath(); ctx.moveTo(rx1, ry1); ctx.lineTo(gx1, gy1); ctx.lineTo(gx2, gy2); ctx.lineTo(rx2, ry2); ctx.stroke();
+		ctx.beginPath();
+		ctx.moveTo(rx1, ry1);
+		ctx.lineTo(gx1, gy1);
+		ctx.lineTo(gx2, gy2);
+		ctx.lineTo(rx2, ry2);
+		ctx.closePath(); 
 
-          ctx.save();
-          ctx.translate((rx1 + gx1) / 2, (ry1 + gy1) / 2);
-          ctx.rotate(-rotation);
-          ctx.font = '10px monospace'; ctx.fillStyle = '#ffcc00';
-          ctx.fillText("15.0m", 4, 0);
-          ctx.restore();
-        });
-      }
+		ctx.fillStyle = 'rgba(0, 255, 136, 0.15)'; 
+		ctx.fill();
+
+		ctx.strokeStyle = '#00ff88'; 
+		ctx.lineWidth = 0.8;
+		ctx.stroke();
+
+		ctx.save();
+		ctx.translate((rx1 + gx1) / 2, (ry1 + gy1) / 2);
+		ctx.rotate(-rotation);
+		ctx.font = '10px monospace'; ctx.fillStyle = '#ffcc00';
+		ctx.fillText("15.0m", 4, 0);
+		ctx.restore();
+		});
+	}
 
       ctx.strokeStyle = '#ff2222'; ctx.lineWidth = 4;
       ctx.beginPath();
