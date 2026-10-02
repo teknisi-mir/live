@@ -1329,18 +1329,43 @@ function autoFitToPoints(points) {
 }
 
 function sortPointsNearestNeighbor(points) {
-  if (points.length <= 1) return points;
+  if (points.length <= 2) return [...points];
+
   let unvisited = [...points];
-  let sorted = [unvisited.shift()];
+
+  let maxDist = -1;
+  let startIdx = 0;
+  for (let i = 0; i < unvisited.length; i++) {
+    for (let j = i + 1; j < unvisited.length; j++) {
+      const dist = getDistanceInMeters(
+        unvisited[i].lat, unvisited[i].lon,
+        unvisited[j].lat, unvisited[j].lon
+      );
+      if (dist > maxDist) {
+        maxDist = dist;
+        startIdx = i;
+      }
+    }
+  }
+
+  let sorted = [unvisited.splice(startIdx, 1)[0]];
+
   while (unvisited.length > 0) {
     const lastPoint = sorted[sorted.length - 1];
-    let nearestIdx = 0, minDistance = Infinity;
+    let nearestIdx = 0;
+    let minDistance = Infinity;
+
     for (let i = 0; i < unvisited.length; i++) {
-      const dist = Math.hypot(unvisited[i].lat - lastPoint.lat, unvisited[i].lon - lastPoint.lon);
-      if (dist < minDistance) { minDistance = dist; nearestIdx = i; }
+      const dist = getDistanceInMeters(
+        lastPoint.lat, lastPoint.lon,
+        unvisited[i].lat, unvisited[i].lon
+      );
+      if (dist < minDistance) {
+        minDistance = dist;
+        nearestIdx = i;
+      }
     }
-    sorted.push(unvisited[nearestIdx]);
-    unvisited.splice(nearestIdx, 1);
+    sorted.push(unvisited.splice(nearestIdx, 1)[0]);
   }
   return sorted;
 }
@@ -2127,6 +2152,6 @@ btnInstall.addEventListener('click', async ()=>{
 });
 
 </script>
-<footer>© 2026 GPRZ | v2.3</footer>
+<footer>© 2026 GPRZ | v2.4</footer>
 </body>
 </html>
