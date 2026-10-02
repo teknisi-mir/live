@@ -633,9 +633,9 @@ function loadDynamicGeoTiff() {
 
   let dynamicUrl;
   if (activeProfileName === 'demo') {
-    dynamicUrl = 'https://gprz.my.id/maps/demo.tif';
+    dynamicUrl = 'https://gprz.my.id/maps/demo.tif?v=' + Date.now();
   } else {
-    dynamicUrl = `${protocol}//${hostIp}/maps/${activeProfileName}.tif`;
+    dynamicUrl = `${protocol}//${hostIp}/maps/${activeProfileName}.tif?v=` + Date.now();
   }
 
   console.log("Memuat GeoTIFF dinamis dari URL:", dynamicUrl);
@@ -667,7 +667,7 @@ async function loadGeoTiffFromUrl(url) {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); 
-    const response = await fetch(formattedUrl, { signal: controller.signal });
+    const response = await fetch(formattedUrl, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(timeoutId); 
 
     if (!response.ok) {
