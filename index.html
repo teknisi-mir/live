@@ -1837,32 +1837,39 @@ function downloadKMLBoundary(){
   const tag = (currentProfile && currentProfile.name)? currentProfile.name : 'boundary';
   const toCoord = p => `${p.lon.toFixed(8)},${p.lat.toFixed(8)},0`;
   const redCoords = currentDispPeriPoints.map(toCoord).join(' ');
-  const safe = currentSafeCoord || currentDispPeriPoints[0];
-  let greenCoords = '';
+
+  let greenPlacemarks = '';
   if(currentGreenBoxes && currentGreenBoxes.length>0){
-    const offPoints = currentGreenBoxes.map(b=>b.p1Offset);
-    offPoints.push(currentGreenBoxes[currentGreenBoxes.length-1].p2Offset);
-    greenCoords = offPoints.map(toCoord).join(' ');
+    greenPlacemarks = currentGreenBoxes.map((b, i) => {
+      const c1 = toCoord(b.p1);
+      const c2 = toCoord(b.p1Offset);
+      const c3 = toCoord(b.p2Offset);
+      const c4 = toCoord(b.p2);
+      const closedCoords = `${c1} ${c2} ${c3} ${c4} ${c1}`;
+
+      return `
+  <Placemark>
+    <name>Green Box ${i+1} - 15m</name>
+    <Style><LineStyle><color>ff00ff88</color><width>2</width></LineStyle><PolyStyle><color>4000ff88</color><fill>1</fill><outline>1</outline></PolyStyle></Style>
+    <Polygon><tessellate>1</tessellate><outerBoundaryIs><LinearRing><coordinates>${closedCoords}</coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>`;
+    }).join('\n');
   }
+
   const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
   <name>${tag}</name>
   <Style id="redLine"><LineStyle><color>ff2222ff</color><width>3</width></LineStyle></Style>
-  <Style id="greenLine"><LineStyle><color>ff88ff00</color><width>3</width></LineStyle></Style>
   <Placemark><name>Boundary - Garis Merah</name><styleUrl>#redLine</styleUrl><LineString><tessellate>1</tessellate><coordinates>${redCoords}</coordinates></LineString></Placemark>
-  ${greenCoords? `<Placemark><name>Offset 15m - Garis Hijau</name><styleUrl>#greenLine</styleUrl><LineString><tessellate>1</tessellate><coordinates>${greenCoords}</coordinates></LineString></Placemark>` : ''}
+  ${greenPlacemarks}
 </Document>
 </kml>`;
   const blob = new Blob([kml], {type: 'application/vnd.google-earth.kml+xml'});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = `${tag}_boundary.kml`; a.click();
+  const a = document.createElement('a'); a.href=url; a.download=`${tag}_boundary.kml`; a.click();
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
 }
-setInterval(()=>{
-  const btn = document.getElementById('btn-kml-boundary');
-  if(btn) btn.disabled =!(currentDispPeriPoints && currentDispPeriPoints.length>0);
-}, 1000);
 
 
 function draw() {
