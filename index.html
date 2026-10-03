@@ -1854,11 +1854,15 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 
 async function focusOnDt(unitName) {
-  if (!dtDataStore[unitName] || !dtDataStore[unitName].latest) return;
-  const target = dtDataStore[unitName].latest;
+  const target = dtDataStore[unitName]?.latest;
+  if (!target) return;
 
-  if (scale <= 1) { scale = 50000; } 
+  if (!target.lat ||!target.lon || (target.lat == 0 && target.lon == 0)) {
+    alert(`${unitName} belum ada koordinat, masih 0,0`);
+    return;
+  }
 
+  if (scale <= 1) { scale = 50000; }
   animating = false;
   await snapToNorth();
   panTo(target.lon, target.lat, 2000);
