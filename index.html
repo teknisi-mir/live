@@ -444,10 +444,8 @@ self.addEventListener('fetch', (event) => {
 const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d'), compass = document.getElementById('compass');
 let scale = 1, offsetX = 0, offsetY = 0, rotation = 0, isDragging = false, lastX = 0, lastY = 0;
 let touchStartDist = 0, touchStartScale = 1, isRotatingCompass = false, compassStartAngle = 0, animating = false;
-
 let touchStartAngle = 0;
 let touchStartRotation = 0;
-
 let initialTouchAngle = 0;
 let initialCanvasRotation = 0;
 let geoTiffImage = null;
@@ -455,20 +453,19 @@ let bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
 let currentDispPeriPoints = [];
 let currentGreenBoxes = [];
 let currentSafeCoord = null;
+let currentGeofence = null;
 let hasAutoFit = false;
-
 let nodeDataStore = {};
 let dtDataStore = {};
 const blinkingNodeMap = {};
 const blinkingNodeTimers = {};
-
 let dpr = window.devicePixelRatio || 1;
 let logicalW = 0, logicalH = 0;
-
 let selectedUnitKey = null;
 let followMode = false;
-
 let needsRedraw = false;
+let autoClosed = false;
+let lastSelectedKey = null;
 
 function requestDraw() {
   if (!needsRedraw) {
@@ -481,9 +478,10 @@ function requestDraw() {
 }
 
 function updatePopupPosition() {
-  if (!selectedUnitKey) return;
-  const store = nodeDataStore[selectedUnitKey]?.latest || dtDataStore[selectedUnitKey]?.latest;
-  if (!store) return;
+  const key = selectedUnitKey || lastSelectedKey;
+  if (!key) return;
+  const store = nodeDataStore[key]?.latest || dtDataStore[key]?.latest || nodeDataStore[key] || dtDataStore[key];
+  if (!store || store.lon === undefined) return;
 
   const sx = store.lon * scale + offsetX;
   const sy = -store.lat * scale + offsetY;
@@ -506,55 +504,81 @@ function formatLast(ts){
 
 function openUnitPopup(key){
   selectedUnitKey = key;
-  document.getElementById('unit-popup').classList.add('show');
+  lastSelectedKey = null;
+  autoClosed = false;
+
+  updatePopupPosition(); 
   updateUnitPopup();
+  document.getElementById('unit-popup').classList.add('show');
+
   if(navigator.vibrate) navigator.vibrate(30);
 }
-function closeUnitPopup(){
-  selectedUnitKey = null; followMode = false;
+
+function closeUnitPopup(isManual = true){
   document.getElementById('unit-popup').classList.remove('show');
   document.getElementById('popup-follow-btn').textContent = '◎';
+  followMode = false;
+
+  if(isManual){
+    selectedUnitKey = null;
+    lastSelectedKey = null;
+    autoClosed = false;
+  } else {
+    if(selectedUnitKey) lastSelectedKey = selectedUnitKey;
+    selectedUnitKey = null;
+    autoClosed = true;
+  }
 }
 function updateUnitPopup(){
-  if(!selectedUnitKey) return;
-  const isNode = selectedUnitKey.startsWith("NODE") || !!nodeDataStore[selectedUnitKey];
+  const checkKey = selectedUnitKey || lastSelectedKey;
+  if(!checkKey) return;
+
+  const isNode = checkKey.startsWith("NODE") ||!!nodeDataStore[checkKey];
   const store = isNode
-    ? (nodeDataStore[selectedUnitKey]?.latest || nodeDataStore[selectedUnitKey])
-    : (dtDataStore[selectedUnitKey]?.latest || dtDataStore[selectedUnitKey]);
-    
+   ? (nodeDataStore[checkKey]?.latest || nodeDataStore[checkKey])
+    : (dtDataStore[checkKey]?.latest || dtDataStore[checkKey]);
+
   if(!store){
-    closeUnitPopup();
+    if(selectedUnitKey) closeUnitPopup(false);
     return;
   }
 
-	if(Date.now() - store.timestamp > 20000){
-		closeUnitPopup();
-		return;
-	}
+  const isExpired = (Date.now() - store.timestamp > 20000);
 
-	document.getElementById('popup-unit-name').textContent = (store.unitName || selectedUnitKey).split('-')[0];
-	document.getElementById('popup-status').textContent = store.posStatus || store.status || (store.activation==1?'Aktif':'OFF');
-	document.getElementById('popup-gps').textContent = store.gpsStatus || store.gps || '-';
-	document.getElementById('popup-last').textContent = formatLast(store.timestamp);
+  if(isExpired){
+    if(selectedUnitKey) closeUnitPopup(false);
+    return;
+  }
 
-	// ambil row nya
-	const rowDist = document.getElementById('popup-distance').closest('div');
-	const rowUptime = document.getElementById('popup-uptime').closest('div');
-	const rowSpeed = document.getElementById('popup-speed').closest('div');
+  if(autoClosed && lastSelectedKey){
+    selectedUnitKey = lastSelectedKey;
+    lastSelectedKey = null;
+    autoClosed = false;
+    document.getElementById('unit-popup').classList.add('show');
+    console.log('auto reopen', selectedUnitKey);
+  }
 
-	if(!isNode){
-		document.getElementById('popup-distance').textContent = store.distance? store.distance + ' m' : '-';
-		document.getElementById('popup-uptime').textContent = store.uptimeMin? store.uptimeMin + ' min' : '-';
-		document.getElementById('popup-speed').textContent = store.speed? store.speed + ' km/h' : '0 km/h';
-		if(rowDist) rowDist.style.display = '';
-		if(rowUptime) rowUptime.style.display = '';
-		if(rowSpeed) rowSpeed.style.display = '';
-	} else {
-		// NODE = cuma 3 baris
-		if(rowDist) rowDist.style.display = 'none';
-		if(rowUptime) rowUptime.style.display = 'none';
-		if(rowSpeed) rowSpeed.style.display = 'none';
-	}
+  document.getElementById('popup-unit-name').textContent = (store.unitName || checkKey).split('-')[0];
+  document.getElementById('popup-status').textContent = store.posStatus || store.status || (store.activation==1?'Aktif':'OFF');
+  document.getElementById('popup-gps').textContent = store.gpsStatus || store.gps || '-';
+  document.getElementById('popup-last').textContent = formatLast(store.timestamp);
+
+  const rowDist = document.getElementById('popup-distance').closest('div');
+  const rowUptime = document.getElementById('popup-uptime').closest('div');
+  const rowSpeed = document.getElementById('popup-speed').closest('div');
+
+  if(!isNode){
+    document.getElementById('popup-distance').textContent = store.distance? store.distance + ' m' : '-';
+    document.getElementById('popup-uptime').textContent = store.uptimeMin? store.uptimeMin + ' min' : '-';
+    document.getElementById('popup-speed').textContent = store.speed? store.speed + ' km/h' : '0 km/h';
+    if(rowDist) rowDist.style.display = '';
+    if(rowUptime) rowUptime.style.display = '';
+    if(rowSpeed) rowSpeed.style.display = '';
+  } else {
+    if(rowDist) rowDist.style.display = 'none';
+    if(rowUptime) rowUptime.style.display = 'none';
+    if(rowSpeed) rowSpeed.style.display = 'none';
+  }
 }
 
 (function(){
@@ -581,7 +605,7 @@ function updateUnitPopup(){
     });
     if(bestKey) openUnitPopup(bestKey);
   });
-  document.getElementById('popup-close-btn').onclick = (e)=>{e.stopPropagation(); closeUnitPopup();};
+  document.getElementById('popup-close-btn').onclick = (e)=>{e.stopPropagation(); closeUnitPopup(true);};
   document.getElementById('popup-follow-btn').onclick = (e)=>{
     e.stopPropagation();
     followMode=!followMode;
@@ -592,10 +616,21 @@ function updateUnitPopup(){
 })();
 
 setInterval(() => {
-  if (selectedUnitKey && typeof updateUnitPopup === 'function') {
+  const now = Date.now();
+
+  if ((selectedUnitKey || autoClosed) && typeof updateUnitPopup === 'function') {
     updateUnitPopup();
   }
-}, 500); 
+
+  const dtPopup = document.getElementById('popup-dt-list');
+  if (dtPopup && dtPopup.classList.contains('show')) {
+    renderDtListPopup();
+  }
+  const nodePopup = document.getElementById('popup-node-list');
+  if (nodePopup && nodePopup.classList.contains('show')) {
+    renderNodeListPopup();
+  }
+}, 1000);
 
 function resize() {
   const c = document.getElementById('canvas-container');
@@ -1172,6 +1207,7 @@ function onConnectSuccess() {
   updateUIStatus('connected');
   mqttClient.subscribe("dla/devstat");
   mqttClient.subscribe("dla/dispperi");
+  mqttClient.subscribe("dla/geofence");	
   loadDynamicGeoTiff();
 }
 
@@ -1222,7 +1258,9 @@ function onMessageArrived(message) {
     const el = document.getElementById('mem-dispperi');
     if (el) el.textContent = payload.substring(0, 15) + "...";
     processDispPeriPayload(payload);
-  }
+  } else if (topic === "dla/geofence") {
+		processGeofencePayload(payload);
+	}
 }
 
 function processDispPeriPayload(payload) {
@@ -1262,6 +1300,38 @@ function processDispPeriPayload(payload) {
   requestDraw();
 }
 
+function processGeofencePayload(payload) {
+  // biu;-1.928589,115.861480;-1.928284,115.862133;-1.928637,115.862335;-1.928943,115.861674;4
+  const parts = payload.split(';').map(p => p.trim()).filter(p => p.length > 0);
+  if (parts.length < 3) return;
+
+  const profileName = parts[0];
+  if (!currentProfile || currentProfile.name!== profileName) return;
+
+  let coordParts = parts.slice(1);
+  if (coordParts.length > 0 &&!coordParts[coordParts.length - 1].includes(',')) {
+    coordParts.pop();
+  }
+
+  const points = [];
+  coordParts.forEach(pairStr => {
+    const c = pairStr.split(',');
+    if (c.length!== 2) return;
+    const lat = parseFloat(c[0].trim());
+    const lon = parseFloat(c[1].trim());
+    if (!isNaN(lat) &&!isNaN(lon) && lat!== 0 && lon!== 0) {
+      points.push({ lat, lon });
+    }
+  });
+
+  if (points.length < 2) {
+    currentGeofence = null;
+  } else {
+    currentGeofence = { name: profileName, points: points };
+  }
+  requestDraw();
+}
+
 function calculateIndependentGreenBoxes(points, safeCoord, offsetMeters) {
   if (points.length < 2) return [];
 
@@ -1288,7 +1358,7 @@ function calculateIndependentGreenBoxes(points, safeCoord, offsetMeters) {
     if (safeCoord) {
       const sx = safeCoord.lon - avgLon;
       const sy = safeCoord.lat - avgLat;
-      const cross = dx * sy - dy * sx; // >0 = safe di kiri
+      const cross = dx * sy - dy * sx; 
       side = cross >= 0? 1 : -1;
     }
 
@@ -1305,6 +1375,7 @@ function calculateIndependentGreenBoxes(points, safeCoord, offsetMeters) {
   }
   return boxes;
 }
+
 
 function autoFitToPoints(points) {
   if (!points || points.length === 0) return;
@@ -1508,7 +1579,6 @@ function processDevstatPayload(payload) {
     const t = line.trim();
     if (!t) return;
     if (t.startsWith('NODE')) {
-      //... parsing NODE lu biarin sama...
       const parts = t.split(',').map(p=>p.trim());
       if (parts.length >= 12) {
         const unitName = parts[0], lon = parseFloat(parts[1]), lat = parseFloat(parts[2]), gpsStatus = parts[3];
@@ -1531,10 +1601,9 @@ function processDevstatPayload(payload) {
     const all = [];
     Object.values(nodeDataStore).forEach(n=>{ if(n.latest) all.push(n.latest); });
     Object.values(dtDataStore).forEach(d=>{ if(d.latest) all.push(d.latest); });
-    if (all.length>5) { autoFitToPoints(all); hasAutoFit = true; } // cuma sekali!
+    if (all.length>5) { autoFitToPoints(all); hasAutoFit = true; } 
   }
 
-  // JANGAN RENDER LANGSUNG - SCHEDULE AJA
   if (!renderScheduled) {
     renderScheduled = true;
     setTimeout(()=>{
@@ -1548,7 +1617,7 @@ function processDevstatPayload(payload) {
         if (dp && dp.classList.contains('show')) renderDtListPopup();
       }
       requestDraw();
-    }, 400); // max 2.5x detik
+    }, 400); 
   }
 }
 
@@ -1598,7 +1667,7 @@ function renderDtListPopup(filterText = '') {
         <div class="node-info">
           <div class="node-title">${item.unitName} <span style="font-size:0.95em; font-weight:600; color:#888;">Rtk Fix ${rtkEach} (${rtkFix}/${total})</span></div>
           <div class="node-subtext">Last ${item.timeStr} ${item.gpsStatus} ${item.uptimeMin}min ${item.version}</div>
-          <div class="node-subtext">${item.distance}m ${item.posStatus} ${item.speed}kmh ${item.rssi} ${item.utc}</div>
+          <div class="node-subtext">${item.distance}m ${item.posStatus} ${item.speed}kmh ${item.rssi} ${item.utc} ${item.lokasi}</div>
         </div>
         <span class="dt-status-dot ${dotClass}"></span>
       </div>
@@ -1729,6 +1798,7 @@ function parseDtLine(line) {
   const version = parts[9];
   const speed = parseFloat(parts[12]) || 0;
   const rssi = parts[14];
+	const lokasi = parts.at(-1);
 
   const now = new Date();
   const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
@@ -1736,7 +1806,7 @@ function parseDtLine(line) {
                   String(now.getSeconds()).padStart(2, '0');
 
   const dtEntry = {
-    unitName, lon, lat, gpsStatus, uptimeMin, utc, distance, posStatus, version, speed, rssi,
+    unitName, lon, lat, gpsStatus, uptimeMin, utc, distance, posStatus, version, speed, rssi, lokasi,
     timestamp: now.getTime(), timeStr
   };
 
@@ -1917,7 +1987,6 @@ function draw() {
 
     // 1. grid
     ctx.save();
-    // Warna grid diperhalus/disamarkan mendekati hitam
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'; 
     ctx.lineWidth = 1;
 
@@ -2038,14 +2107,21 @@ function draw() {
         ctx.fillStyle = '#ff2222';
         ctx.fillRect(screenX - boxSize / 2, screenY - boxSize / 2, boxSize, boxSize);
 
-        if (index === 0) {
-          ctx.save();
-          ctx.translate(screenX, screenY); ctx.rotate(-rotation);
-          ctx.fillStyle = '#00d8ff'; ctx.font = '9px monospace';
-          ctx.fillText(`${pt.lat.toFixed(6)}`, 8, -2);
-          ctx.fillText(`${pt.lon.toFixed(6)}`, 8, 8);
-          ctx.restore();
-        }
+			 if (index === 0) {
+				ctx.save();
+				ctx.translate(screenX, screenY); 
+				ctx.rotate(-rotation);
+				ctx.font = '9px monospace';
+				ctx.strokeStyle = 'black';
+				ctx.lineWidth = 2.5;
+				ctx.lineJoin = 'round';
+				ctx.strokeText(`${pt.lat.toFixed(6)}`, 8, -2);
+				ctx.strokeText(`${pt.lon.toFixed(6)}`, 8, 8);
+				ctx.fillStyle = '#00d8ff';
+				ctx.fillText(`${pt.lat.toFixed(6)}`, 8, -2);
+				ctx.fillText(`${pt.lon.toFixed(6)}`, 8, 8);
+				ctx.restore();
+			}
       });
 
       if (currentSafeCoord) {
@@ -2062,6 +2138,69 @@ function draw() {
         ctx.fillText("SAFECOORD", 0, 0);
         ctx.restore();
       }
+			if (currentGeofence && currentGeofence.points && currentGeofence.points.length >= 2) {
+				const pts = currentGeofence.points;
+
+				ctx.strokeStyle = 'rgba(255, 235, 59, 0.7)';
+				ctx.lineWidth = 1.2;
+				ctx.beginPath();
+				pts.forEach((pt, i) => {
+					const sx = pt.lon * scale + offsetX;
+					const sy = -pt.lat * scale + offsetY;
+					if (i === 0) ctx.moveTo(sx, sy);
+					else ctx.lineTo(sx, sy);
+				});
+				ctx.closePath();
+				ctx.stroke();
+
+				pts.forEach(pt => {
+					const sx = pt.lon * scale + offsetX;
+					const sy = -pt.lat * scale + offsetY;
+					ctx.fillStyle = '#ffeb3b';
+					ctx.fillRect(sx - 2, sy - 2, 4, 4);
+				});
+
+				pts.forEach((pt, idx) => {
+					const sx = pt.lon * scale + offsetX;
+					const sy = -pt.lat * scale + offsetY;
+					ctx.save();
+					ctx.translate(sx, sy);
+					ctx.rotate(-rotation);
+					ctx.font = '9px monospace';
+					ctx.textAlign = 'left';
+					ctx.lineJoin = 'round';
+					const offX = 6;
+					const offY = 12;
+
+					if (idx === 0) {
+						ctx.font = 'bold 10px monospace';
+						ctx.strokeStyle = 'black';
+						ctx.lineWidth = 3;
+						ctx.strokeText(`geo${currentGeofence.name}`, offX, -8);
+						ctx.fillStyle = '#ffeb3b';
+						ctx.fillText(`geo${currentGeofence.name}`, offX, -8);
+
+						ctx.font = '9px monospace';
+						ctx.strokeStyle = 'black';
+						ctx.lineWidth = 2.5;
+						ctx.strokeText(pt.lat.toFixed(6), offX, offY);
+						ctx.strokeText(pt.lon.toFixed(6), offX, offY + 11);
+						ctx.fillStyle = 'rgba(255,235,59,0.95)';
+						ctx.fillText(pt.lat.toFixed(6), offX, offY);
+						ctx.fillText(pt.lon.toFixed(6), offX, offY + 11);
+					} else {
+						const txt = `${pt.lat.toFixed(6)},${pt.lon.toFixed(6)}`;
+						ctx.strokeStyle = 'black';
+						ctx.lineWidth = 2.5;
+						ctx.strokeText(pt.lat.toFixed(6), offX, offY);
+						ctx.strokeText(pt.lon.toFixed(6), offX, offY + 11);
+						ctx.fillStyle = 'rgba(255,235,59,0.95)';
+						ctx.fillText(pt.lat.toFixed(6), offX, offY);
+						ctx.fillText(pt.lon.toFixed(6), offX, offY + 11);
+					}
+					ctx.restore();
+				});
+			}	
     }
 
     const nowTime = Date.now();
@@ -2084,7 +2223,12 @@ function draw() {
 
       const shortName = formatNodeName(pt.unitName);
       ctx.translate(screenX, screenY); ctx.rotate(-rotation);
-      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px monospace';
+      ctx.font = 'bold 14px monospace';
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(shortName, 10, 4);
+      ctx.fillStyle = '#ffffff';
       ctx.fillText(shortName, 10, 4);
       ctx.restore();
     });
@@ -2094,6 +2238,8 @@ function draw() {
       if (history.length === 0) return;
 
       const latest = dtObj.latest;
+			if(!latest) return;
+			if (latest.lon === 0 && latest.lat === 0) return;
       const ageLatest = nowTime - latest.timestamp;
       if (ageLatest > 20000) return;
 
@@ -2102,6 +2248,7 @@ function draw() {
       history.forEach((pt, index) => {
         const ptAge = nowTime - pt.timestamp;
         if (ptAge > 20000) return;
+				if (pt.lon === 0 && pt.lat === 0) return;
 
         const screenX = pt.lon * scale + offsetX;
         const screenY = -pt.lat * scale + offsetY;
@@ -2131,7 +2278,12 @@ function draw() {
         if (isLatest) {
           const shortName = formatDtName(pt.unitName);
           ctx.translate(screenX, screenY); ctx.rotate(-rotation);
-          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px monospace';
+          ctx.font = 'bold 12px monospace';
+          ctx.strokeStyle = 'black';
+          ctx.lineWidth = 3;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(shortName, 10, 4);
+          ctx.fillStyle = '#ffffff';
           ctx.fillText(shortName, 10, 4);
         }
         ctx.restore();
@@ -2148,7 +2300,7 @@ function draw() {
     const s = nodeDataStore[selectedUnitKey]?.latest || dtDataStore[selectedUnitKey]?.latest;
     if(s){
       const tx = -s.lon * scale;
-      const ty = -s.lat * scale; // sengaja minus buat cek jarak aja
+      const ty = -s.lat * scale; 
       if(Math.abs(tx - offsetX) > 0.5){
         requestAnimationFrame(draw);
       }
@@ -2193,6 +2345,6 @@ btnInstall.addEventListener('click', async ()=>{
 });
 
 </script>
-<footer>© 2026 GPRZ | v2.4</footer>
+<footer>© 2026 GPRZ | v2.5</footer>
 </body>
 </html>
