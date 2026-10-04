@@ -1776,7 +1776,8 @@ function getStatusColor(status) {
     case 'ON AWARENESS': return '#9810F1';
     case 'CLOSING': return '#F412F3';
     case 'ON PERIMETER': return '#2CFAF4';
-    case 'CROSSING': return '#ff0000';
+    case 'CROSSING': 
+	case 'FCROSS': return '#ff0000';
     default: return '#ffffff';
   }
 }
