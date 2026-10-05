@@ -294,7 +294,11 @@
   
   <button id="btn-load-dynamic" onclick="loadDynamicGeoTiff()" style="width: 100%; margin-top: 8px; padding: 7px 10px; font-size: 11px; font-weight: 600; background: #234d35; color: #c8ffda; border: 1px solid #3a7a53; border-radius: 6px; cursor: pointer;">
     Load Map dari server /maps/{tag}.tif
-  </button>   
+  </button>
+	<label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:10px; color:#c8ffda; cursor:pointer; background:rgba(0,255,136,0.08); padding:2px 8px; border-radius:6px; border:1px solid rgba(0,255,136,0.15);">
+  <input type="checkbox" id="chk-cached-map" checked style="accent-color:#00ff88;">
+  <span> Cached Map</span>
+  </label>
   
   <div id="geotiff-status-text" style="display: none; margin-top: 6px; font-size: 11px; color: #ffeb3b; text-align: center; font-weight: bold;">
     Connecting...
@@ -648,130 +652,106 @@ function resize() {
 window.addEventListener('resize', resize); 
 
 const getAngle = (cx, cy, x, y) => Math.atan2(y - cy, x - cx);
-
+const MAP_CACHE_NAME = 'mir-maps-cache-v1';
 
 function getMqttHostIp() {
-  if (mqttClient && mqttClient.host) {
-    return mqttClient.host;
-  }
+  if (mqttClient && mqttClient.host) return mqttClient.host;
   return window.location.hostname || 'localhost';
 }
 
 function loadDynamicGeoTiff() {
   const hostIp = getMqttHostIp();
-
-  const activeProfileName = (currentProfile && currentProfile.name) 
-    ? currentProfile.name 
-    : 'sm6';
-  
+  const activeProfileName = (currentProfile && currentProfile.name)? currentProfile.name : 'sm6';
   const protocol = 'http:';
+  const useCache = document.getElementById('chk-cached-map')?.checked;
 
-  let dynamicUrl;
-  if (activeProfileName === 'demo') {
-    dynamicUrl = 'https://gprz.my.id/maps/demo.tif?v=' + Date.now();
-  } else {
-    dynamicUrl = `${protocol}//${hostIp}/maps/${activeProfileName}.tif?v=` + Date.now();
-  }
+  let baseUrl = activeProfileName === 'demo'
+   ? 'https://gprz.my.id/maps/demo.tif'
+    : `${protocol}//${hostIp}/maps/${activeProfileName}.tif`;
 
-  console.log("Memuat GeoTIFF dinamis dari URL:", dynamicUrl);
-  loadGeoTiffFromUrl(dynamicUrl);
+  let finalUrl = useCache? baseUrl : baseUrl + '?v=' + Date.now();
+  loadGeoTiffFromUrl(finalUrl, { useCache, baseUrl });
 }
 
-async function loadGeoTiffFromUrl(url) {
+async function loadGeoTiffFromUrl(url, opts = {}) {
+  const useCache = opts.useCache?? true;
+  const cacheKey = opts.baseUrl || url.split('?')[0];
   const statusEl = document.getElementById('geotiff-status-text');
-  const btnEl = document.getElementById('btn-load-dynamic'); 
+  const btnEl = document.getElementById('btn-load-dynamic');
 
   try {
-    if (typeof GeoTIFF === 'undefined') {
-      alert("Library GeoTIFF belum siap.");
-      return;
-    }
+    if (typeof GeoTIFF === 'undefined') { alert("Library GeoTIFF belum siap."); return; }
 
-    let formattedUrl = url.trim();
-    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
-      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-      formattedUrl = `${protocol}//${formattedUrl}`;
-    }
-
-    if (statusEl) {
-      statusEl.style.display = 'block';
-      statusEl.textContent = 'Downloading...';
-      statusEl.style.color = '#ffeb3b';
-    }
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.style.color = '#ffeb3b'; }
     if (btnEl) btnEl.disabled = true;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); 
-    const response = await fetch(formattedUrl, { signal: controller.signal, cache: 'no-store' });
-    clearTimeout(timeoutId); 
+    let arrayBuffer = null;
+    let fromCache = false;
 
-    if (!response.ok) {
-      throw new Error(`Gagal mengunduh file (HTTP ${response.status}: ${response.statusText})`);
-    }
-    
-    if (statusEl) statusEl.textContent = 'Processing GeoTIFF...';
-
-    const arrayBuffer = await response.arrayBuffer();
-    
-    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-      throw new Error("File GeoTIFF kosong atau korup.");
+    if (useCache && 'caches' in window) {
+      try {
+        const cache = await caches.open(MAP_CACHE_NAME);
+        const cachedRes = await cache.match(cacheKey);
+        if (cachedRes) {
+          statusEl.textContent = 'Loading from cache...';
+          arrayBuffer = await cachedRes.arrayBuffer();
+          fromCache = true;
+        }
+      } catch(e){}
     }
 
+    if (!arrayBuffer) {
+      statusEl.textContent = 'Downloading...';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const response = await fetch(url, { signal: controller.signal, cache: useCache? 'default' : 'no-store' });
+      clearTimeout(timeoutId);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      arrayBuffer = await response.arrayBuffer();
+      try {
+        const cache = await caches.open(MAP_CACHE_NAME);
+        const headers = new Headers();
+        headers.set('x-cached-at', new Date().toLocaleString('id-ID'));
+        await cache.put(cacheKey, new Response(arrayBuffer, { headers }));
+      } catch(e){}
+    }
+
+    statusEl.textContent = 'Processing GeoTIFF...';
     const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
     const image = await tiff.getImage();
     const bbox = image.getBoundingBox();
-
-    bounds.minX = bbox[0]; bounds.minY = bbox[1];
-    bounds.maxX = bbox[2]; bounds.maxY = bbox[3];
-
+    bounds.minX = bbox[0]; bounds.minY = bbox[1]; bounds.maxX = bbox[2]; bounds.maxY = bbox[3];
     const width = image.getWidth(), height = image.getHeight();
     const rgbData = await image.readRGB();
-
     const offCanvas = document.createElement('canvas');
     offCanvas.width = width; offCanvas.height = height;
     const offCtx = offCanvas.getContext('2d');
     const imgData = offCtx.createImageData(width, height);
-    const data = imgData.data;
-
     let srcIdx = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      const r = rgbData[srcIdx], g = rgbData[srcIdx + 1], b = rgbData[srcIdx + 2];
-      data[i] = r; data[i + 1] = g; data[i + 2] = b;
-      data[i + 3] = (r === 0 && g === 0 && b === 0) ? 0 : 255;
+    for (let i = 0; i < imgData.data.length; i += 4) {
+      imgData.data[i] = rgbData[srcIdx]; imgData.data[i+1] = rgbData[srcIdx+1]; imgData.data[i+2] = rgbData[srcIdx+2];
+      imgData.data[i+3] = (rgbData[srcIdx]==0 && rgbData[srcIdx+1]==0 && rgbData[srcIdx+2]==0)? 0 : 255;
       srcIdx += 3;
     }
-
     offCtx.putImageData(imgData, 0, 0);
     geoTiffImage = offCanvas;
-
     const geoHeight = bounds.maxY - bounds.minY;
     const centerX = (bounds.minX + bounds.maxX) / 2;
     const centerY = (bounds.minY + bounds.maxY) / 2;
-
     scale = canvas.height / geoHeight;
-    offsetX = -centerX * scale;
-    offsetY = centerY * scale;
+    offsetX = -centerX * scale; offsetY = centerY * scale;
     hasAutoFit = true;
 
-    if (statusEl) statusEl.style.display = 'none';
+    if (statusEl) {
+      if (fromCache) { statusEl.textContent = 'Loaded from cache ✅'; statusEl.style.color = '#00ff88'; setTimeout(()=>statusEl.style.display='none',1500); }
+      else { statusEl.style.display = 'none'; }
+    }
     if (btnEl) btnEl.disabled = false;
-
     draw();
 
   } catch (err) {
-    console.error("Error loading GeoTIFF:", err);
-
-    let errorMessage = 'Download Gagal!';
-    if (err.name === 'AbortError') {
-      errorMessage = 'Kendala Koneksi (Timeout)!';
-    } else if (err.message) {
-      errorMessage = err.message;
-    }
-
-    if (statusEl) {
-      statusEl.textContent = errorMessage;
-      statusEl.style.color = '#ffb3ba';
-    }
+    console.error(err);
+    if (statusEl) { statusEl.textContent = 'Gagal: ' + err.message; statusEl.style.color = '#ffb3ba'; }
     if (btnEl) btnEl.disabled = false;
   }
 }
@@ -1096,19 +1076,35 @@ function initProfileSelect() {
   const select = document.getElementById('profile-select');
   if (!select) return;
   select.innerHTML = '';
-  getAllProfiles().forEach(p => {
+  const all = getAllProfiles();
+  all.forEach(p => {
     const opt = document.createElement('option');
     opt.value = p.id;
     opt.textContent = `${p.name} (${p.transport}://${p.ip}:${p.port})`;
     select.appendChild(opt);
   });
+  const lastId = localStorage.getItem('last_mqtt_profile_id');
+  if (lastId && all.some(p => p.id === lastId)) {
+    select.value = lastId;
+  }
   onProfileSelectChange();
+  setTimeout(() => {
+    const restored = document.getElementById('profile-select');
+    if (restored && restored.value && restored.value !== currentProfile?.id) {
+      onProfileSelectChange();
+    }
+  }, 100);
 }
 
 function onProfileSelectChange() {
   const select = document.getElementById('profile-select');
   if (!select) return;
-  currentProfile = getAllProfiles().find(p => p.id === select.value);
+  const found = getAllProfiles().find(p => p.id === select.value);
+  if (found) {
+    currentProfile = found;
+    localStorage.setItem('last_mqtt_profile_id', currentProfile.id);
+    localStorage.setItem('last_mqtt_profile_name', currentProfile.name);
+  }
 }
 
 function toggleProfilePopup() {
@@ -1776,8 +1772,8 @@ function getStatusColor(status) {
     case 'ON AWARENESS': return '#9810F1';
     case 'CLOSING': return '#F412F3';
     case 'ON PERIMETER': return '#2CFAF4';
-    case 'CROSSING': 
-	case 'FCROSS': return '#ff0000';
+		case 'FCROSS' :
+    case 'CROSSING': return '#ff0000';
     default: return '#ffffff';
   }
 }
@@ -2350,6 +2346,6 @@ btnInstall.addEventListener('click', async ()=>{
 });
 
 </script>
-<footer>© 2026 GPRZ | v2.5</footer>
+<footer>© 2026 GPRZ | v2.6</footer>
 </body>
 </html>
