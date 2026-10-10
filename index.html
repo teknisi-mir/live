@@ -14,6 +14,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.min.js"></script>
 <style>
   html, body {
     margin: 0; padding: 0; width: 100vw; height: 100vh; height: 100dvh;
@@ -264,10 +267,95 @@
   }
 	.btn-kml-green:hover { background: rgba(0,255,136,0.28); transform: scale(1.05); }
 	.btn-kml-green:disabled { opacity: 0.3; pointer-events: none; }
+	
+	#recControls{
+		position:absolute; left:14px; top:14px; z-index:25;
+		display:flex; flex-direction:column; align-items:flex-start; gap:8px;
+	}
+	.btn-rec-glass{
+		display:flex; align-items:center; gap:6px;
+		padding:6px 12px;
+		border-radius:20px;
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+		font-weight:800; font-size:11px; letter-spacing:0.5px;
+		cursor:pointer;
+		box-shadow:0 2px 10px rgba(0,0,0,.35);
+		transition:0.2s;
+		border:1px solid;
+	}
+	.btn-rec-glass:active{ transform:scale(0.92); }
 
+	/* REC = pastel merah kayak btn bawah no 1 */
+	#btnRec{
+		background: rgba(255, 179, 186, 0.22);
+		border-color: rgba(255, 179, 186, 0.45);
+		color: #ffb3ba;
+	}
+	#btnRec.recording{
+		background: rgba(255, 70, 70, 0.35);
+		border-color: rgba(255, 70, 70, 0.6);
+		color: #fff;
+	}
+	.rec-dot{ width:9px; height:9px; background:#ff4d4d; border-radius:50%; display:inline-block; }
+	#btnRec.recording .rec-dot{ background:#fff; border-radius:2px; }
+
+	/* PLAY = pastel biru kayak btn bawah no 3 */
+	#btnPlay{
+		background: rgba(186, 225, 255, 0.22);
+		border-color: rgba(186, 225, 255, 0.45);
+		color: #bae1ff;
+	}
+
+	#recTimerWrap{ position:absolute; left:8px; top:62px; z-index:25; pointer-events:none; }
+	#recTimer{ font-family:Consolas,monospace; font-size:28px; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.9); }
+
+	#playbackTimerWrap{ position:absolute; left:50%; bottom:133px; top:auto; transform:translateX(-50%); z-index:23; pointer-events:none; }
+	#playback-label{ font-family:Consolas,monospace; font-size:28px; color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.9); letter-spacing:0.5px; white-space:nowrap; }
+
+	#playback-bar{
+		display:none; position:absolute; bottom:85px; left:50%; transform:translateX(-50%);
+		z-index:22; width:84vw; max-width:380px; padding:8px 14px;
+		background:rgba(18,24,38,0.7); backdrop-filter:blur(12px); border-radius:30px;
+		border:1px solid rgba(255,255,255,0.15);
+	}
+	#playback-bar.show{ display:flex; align-items:center; gap:10px; }
+	#playback-slider{ flex:1; width:100%; min-width:0; accent-color:#bae1ff; }
+	#recHint{ font-size:11px; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.9); margin-top:2px; }
+	.hidden{ display:none!important; }
+	
+	#popup-playback{
+		display:none; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+		z-index:50; width:300px; padding:16px;
+		background: rgba(18,24,38,0.88); backdrop-filter: blur(16px);
+		-webkit-backdrop-filter: blur(16px);
+		border:1px solid rgba(255,255,255,0.18); border-radius:16px;
+		box-shadow:0 12px 40px rgba(0,0,0,.6); color:#fff; text-align:center;
+	}
+	#popup-playback.show{ display:flex; flex-direction:column; gap:12px; }
+	.popup-glossy-title{ font-weight:800; color:#bae1ff; font-size:14px; }
+	.popup-glossy-btns{ display:flex; gap:10px; }
+	.btn-yes{ flex:1; padding:8px; border-radius:10px; background:rgba(0,255,136,0.25); border:1px solid #00ff88; color:#00ff88; font-weight:700; cursor:pointer; }
+	.btn-no{ flex:1; padding:8px; border-radius:10px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#fff; cursor:pointer; }
+
+	/* UPLOAD ZIP INPUT */
+	#popup-upload{ display:none; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:50; width:300px; padding:16px; background:rgba(18,24,38,0.9); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.18); border-radius:16px; color:#fff; }
+	#popup-upload.show{ display:flex; flex-direction:column; gap:10px; }
+
+	/* SLIDER PLAYBACK - di atas 4 tombol */
+	
+	#playback-bar .btn-rec-glass{ padding:6px 14px; border-radius:20px; font-size:11px; font-weight:800; }
+	#btnPlayPause.paused{
+		background:rgba(186,225,255,0.35); color:#fff;
+	}
+	#btnStopPlay{
+		background:rgba(255,70,70,0.3); border-color:#ff4d4d; color:#fff;
+	}
 </style>
 </head>
 <body>
+
+</div>
 <div id="canvas-container">
   <div id="top-info-bar">
     <div class="info-left-box" id="mqtt-live-badge">
@@ -283,6 +371,39 @@
       </div>
     </div>
   </div>
+<div id="recControls">
+  <button id="btnPlay" class="btn-rec-glass"><span>▶</span></button>
+  <button id="btnRec" class="btn-rec-glass"><span class="rec-text">REC</span><span class="rec-dot"></span></button>
+  <div id="recTimerWrap" class="hidden">
+    <div id="recTimer">00:00:00.000</div>
+  </div>
+</div>
+
+<!-- INI YANG BARU - DI LUAR SLIDER, DI ATAS CANVAS -->
+<div id="playbackTimerWrap" class="hidden">
+  <div id="playback-label">6 Okt 00:00:00.0</div>
+</div>
+
+<div id="playback-bar">
+  <button id="btnPlayPause" class="btn-rec-glass" onclick="togglePlayPause()">PAUSE</button>
+  <input type="range" id="playback-slider" min="0" max="100" value="0">
+  <button id="btnStopPlay" class="btn-rec-glass" onclick="stopPlaybackMode()">STOP</button>
+</div>
+<div id="popup-playback">
+  <div class="popup-glossy-title">Apakah anda akan melakukan playback?</div>
+  <div style="font-size:11px; color:#aaa;">Koneksi MQTT akan diputus dan data live dibersihkan</div>
+  <div class="popup-glossy-btns">
+    <button class="btn-no" onclick="closePlaybackConfirm()">No</button>
+    <button class="btn-yes" onclick="confirmPlaybackYes()">Yes</button>
+  </div>
+</div>
+
+<div id="popup-upload">
+  <div class="popup-glossy-title">Upload file rekaman (.zip)</div>
+  <input type="file" id="zip-input" accept=".zip" style="font-size:11px; color:#ccc;">
+  <button class="btn-no" onclick="document.getElementById('popup-upload').classList.remove('show')">Batal</button>
+</div>
+
   <canvas id="canvas"></canvas>
   <div id="compass"><span>N</span><div class="arrow"></div></div>
   
@@ -441,22 +562,55 @@
 </div>
 
 <script>
-const CACHE_NAME = 'offline-libs-v1';
+const CACHE_NAME = 'offline-libs-v2';
 const URLS_TO_CACHE = [
   'https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+  'https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.min.js'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(URLS_TO_CACHE)).catch(()=>{})
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(URLS_TO_CACHE);
+    }).catch((err) => {
+      console.warn('[SW] Gagal cache awal:', err);
+    })
   );
   self.skipWaiting();
 });
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
 self.addEventListener('fetch', (event) => {
+  const isLib = URLS_TO_CACHE.some(url => event.request.url.startsWith(url) || event.request.url === url);
+  
+  if (!isLib) {
+    return; 
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      
+      return fetch(event.request).then((res) => {
+        return caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, res.clone());
+          return res;
+        });
+      });
+    }).catch(() => {
+      console.warn('[SW] Offline dan tidak ada cache untuk:', event.request.url);
+    })
   );
 });
 
@@ -486,6 +640,510 @@ let needsRedraw = false;
 let autoClosed = false;
 let lastSelectedKey = null;
 
+let recContainer = null;
+let recUnitDict = [];
+let recUnitMap = new Map();
+let recTotalLogs = 0;
+let isRecording = false;
+let recStartTime = 0;
+let recInterval = null;
+
+function getUnitIdx(name){
+  if(recUnitMap.has(name)) return recUnitMap.get(name);
+  const idx = recUnitDict.length;
+  recUnitDict.push(name);
+  recUnitMap.set(name, idx);
+  return idx;
+}
+const GPS_CODE = {"RTK FIX":0,"RTK FLOAT":1,"3D FIX":2,"NO FIX":3,"NO FIX0":4};
+const GPS_DECODE = ["RTK FIX","RTK FLOAT","3D FIX","NO FIX","NO FIX0"];
+const POS_CODE = {
+  "FARAWAY": 0,
+  "ON AWARENESS": 1,
+  "CLOSING": 2,
+  "ON PERIMETER": 3,
+  "CROSSING": 4,
+  "FCROSS": 5
+};
+const POS_DECODE = ["FARAWAY","ON AWARENESS","CLOSING","ON PERIMETER","CROSSING","FCROSS"];
+
+
+let recStartDate = null;
+let recStopDate = null;
+
+function makeLocalLabel(date = new Date()){
+  return date.toLocaleTimeString('en-GB', {hour12:false}) + '.' + String(date.getMilliseconds()).padStart(3,'0');
+}
+function makeFileName(start, stop){
+  const bul = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+  const d = start.getDate();
+  const m = bul[start.getMonth()];
+  const h1 = String(start.getHours()).padStart(2,'0');
+  const mi1 = String(start.getMinutes()).padStart(2,'0');
+  const h2 = String(stop.getHours()).padStart(2,'0');
+  const mi2 = String(stop.getMinutes()).padStart(2,'0');
+  return `${d}-${m}-${h1}-${mi1}_${h2}-${mi2}.zip`; // 6-Okt-09-33_09-35.zip
+}
+
+function formatRecTime(ms){
+  let totalSec = Math.floor(ms/1000);
+  let h = Math.floor(totalSec/3600);
+  let m = Math.floor((totalSec%3600)/60);
+  let s = totalSec%60;
+  let milli = Math.floor(ms%1000);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(milli).padStart(3,'0')}`;
+}
+
+function startRecUI(){
+  if(isRecording) return;
+  isRecording = true;
+  recStartDate = new Date();
+  recContainer = {
+    t0: Date.now(),
+    t0_iso: recStartDate.toISOString(),
+    t: [], k: [], u: [], lat: [], lon: [], g: [], r: [],
+    act: [], s: [], di: [], ps: [], up: [],
+    ver: [], utc: [], lok: [], dp: [], gf: []
+  };
+  recUnitDict = [];
+  recUnitMap = new Map();
+  recTotalLogs = 0;
+  recStartTime = performance.now();
+  document.getElementById('btnRec').classList.add('recording');
+  document.getElementById('btnRec').querySelector('.rec-text').textContent = 'STOP';
+  document.getElementById('recTimerWrap').classList.remove('hidden');
+  recInterval = setInterval(()=>{
+    document.getElementById('recTimer').textContent = formatRecTime(performance.now() - recStartTime);
+  }, 33);
+}
+
+async function stopRecUI(){
+  if(!isRecording) return;
+  isRecording = false;
+  recStopDate = new Date();
+  document.getElementById('btnRec').classList.remove('recording');
+  document.getElementById('btnRec').querySelector('.rec-text').textContent = 'REC';
+  document.getElementById('recTimerWrap').classList.add('hidden');
+  clearInterval(recInterval);
+  document.getElementById('recTimer').textContent = '00:00:00.000';
+
+  if(!recContainer || recContainer.t.length===0){
+    alert('Tidak ada data terekam');
+    return;
+  }
+
+  const payload = {
+    t0: recContainer.t0,
+    dict: recUnitDict,
+    t: recContainer.t, k: recContainer.k, u: recContainer.u,
+    lat: recContainer.lat, lon: recContainer.lon,
+    g: recContainer.g, r: recContainer.r,
+    act: recContainer.act, s: recContainer.s,
+    di: recContainer.di, ps: recContainer.ps, up: recContainer.up,
+    ver: recContainer.ver, utc: recContainer.utc, lok: recContainer.lok,
+    dp: recContainer.dp, gf: recContainer.gf
+  };
+
+  const jsonStr = JSON.stringify(payload);
+  const enc = new TextEncoder().encode(jsonStr);
+  const gz = fflate.gzipSync(enc, {level:6, mtime:0}); 
+
+  const meta = {
+    profile: currentProfile? currentProfile.name : '-',
+    start_local: recStartDate.toLocaleString('en-GB'),
+    start_iso: recStartDate.toISOString(),
+    stop_local: recStopDate.toLocaleString('id-ID'),
+    stop_iso: recStopDate.toISOString(),
+    total_logs: recContainer.t.length,
+    t0: recContainer.t0,
+    t0_iso: recContainer.t0_iso,
+    version: 'v5-flat-gzip'
+  };
+
+  const zip = new JSZip();
+  zip.file('data.json.gz', gz); 
+  zip.file('meta.json', JSON.stringify(meta));
+
+  const blob = await zip.generateAsync({type:"blob", compression:"STORE"});
+  const fileName = makeFileName(recStartDate, recStopDate);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=fileName; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+
+  console.log('REC v5 selesai, logs:', recContainer.t.length, 'file:', fileName, 'gz size:', gz.length);
+  recContainer = null;
+}
+
+document.getElementById('btnRec').addEventListener('click', ()=>{
+  if(!isRecording) startRecUI(); else stopRecUI();
+});
+
+function pushToRec(type, dataObj){
+  if(!isRecording || !recContainer) return;
+  const delta = Date.now() - recContainer.t0;
+  const isNode = type==='NODE';
+  const isDt = type==='DT';
+  const isDisp = type==='DISPPERI';
+	const isGeof = type==='GEOFENCE';
+  const unitIdx = dataObj.unitName ? getUnitIdx(dataObj.unitName) : -1;
+
+  recContainer.t.push(delta);
+  recContainer.k.push(isNode?0:isDt?1:isDisp?2:3); 
+  recContainer.u.push(unitIdx);
+  recContainer.lat.push(dataObj.lat ?? null);
+  recContainer.lon.push(dataObj.lon ?? null);
+  recContainer.g.push(GPS_CODE[dataObj.gpsStatus] ?? -1);
+  recContainer.r.push(dataObj.rssi ?? null);
+  recContainer.act.push(isNode? (dataObj.activation??0) : null);
+  recContainer.s.push(isDt? (dataObj.speed??0) : null);
+  recContainer.di.push(isDt? (dataObj.distance??0) : null);
+  recContainer.ps.push(isDt? (POS_CODE[dataObj.posStatus]??0) : null);
+  recContainer.up.push(isDt? (dataObj.uptimeMin??0) : null);
+  recContainer.ver.push(isDt? (dataObj.version??0) : null);
+  recContainer.utc.push(isDt? (dataObj.utc??0) : null);
+  recContainer.lok.push(isDt? (dataObj.lokasi??0) : null);
+  recContainer.dp.push(isDisp? dataObj : null);
+  recContainer.gf.push(isGeof? dataObj : null);	
+}
+
+
+let playbackLogs = [];
+let playbackTimer = null;
+let playbackIndex = 0;
+let isPlaybackMode = false;
+
+function closePlaybackConfirm(){
+  document.getElementById('popup-playback').classList.remove('show');
+}
+function openPlaybackConfirm(){
+  if(isRecording){ alert('Stop REC dulu'); return; }
+  document.getElementById('popup-playback').classList.add('show');
+}
+
+document.getElementById('btnPlay').onclick = ()=>{
+  if(isPlaybackMode){
+    stopPlaybackMode();
+  }else{
+    openPlaybackConfirm();
+  }
+};
+
+function confirmPlaybackYes(){
+  closePlaybackConfirm();
+  if(typeof forceDisconnectMQTT === 'function') forceDisconnectMQTT();
+  nodeDataStore = {};
+  dtDataStore = {};
+  currentDispPeriPoints = [];
+  currentGreenBoxes = [];
+  currentSafeCoord = null;
+  currentGeofence = null;
+	hasAutoFit = false;
+  if(typeof requestDraw === 'function') requestDraw();
+  updateNodeRTKBar(); updateDtRTKBar();
+  document.getElementById('popup-upload').classList.add('show');
+}
+
+document.getElementById('zip-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  document.getElementById('popup-upload').classList.remove('show');
+
+  const zip = await JSZip.loadAsync(file);
+  const allFiles = Object.keys(zip.files);
+
+  let t0_base = Date.now();
+  const metaName = allFiles.find(n=>n.endsWith('meta.json'));
+  if(metaName){
+    try{
+      const meta = JSON.parse(await zip.files[metaName].async('string'));
+      t0_base = new Date(meta.start_iso).getTime() || Date.now();
+    }catch{}
+  }
+
+  const gzName = allFiles.find(n=> n.includes('data.json.gz')) || allFiles.find(n=> n.endsWith('.gz'));
+  if(!gzName){ alert('Zip tidak ada data.gz'); return; }
+
+  const gz = await zip.files[gzName].async('uint8array');
+  const dec = fflate.gunzipSync(gz);
+  const chunk = JSON.parse(new TextDecoder().decode(dec));
+
+  const base = chunk.t0 || t0_base;
+  const dict = chunk.dict || [];
+  const getUnitName = (idx) => (idx>=0 && dict[idx])? dict[idx] : `UNIT_${idx}`;
+
+  const rawLogs = [];
+  for(let i=0; i<chunk.t.length; i++){
+    const abs = base + chunk.t[i];
+    const d = new Date(abs);
+    const k = chunk.k[i];
+
+    let data, type;
+    if(k===2){
+      type = 'DISPPERI';
+      data = chunk.dp[i];
+	  }else if(k===3){ 
+    type = 'GEOFENCE';
+    data = chunk.gf[i];
+    }else if(k===0){
+      type = 'NODE';
+      data = {
+        unitName: getUnitName(chunk.u[i]),
+        lat: chunk.lat[i], lon: chunk.lon[i],
+        gpsStatus: GPS_DECODE[chunk.g[i]] || 'RTK FIX',
+        rssi: chunk.r[i], activation: chunk.act[i]
+      };
+    }else{
+      type = 'DT';
+      data = {
+        unitName: getUnitName(chunk.u[i]),
+        lat: chunk.lat[i], lon: chunk.lon[i],
+        gpsStatus: GPS_DECODE[chunk.g[i]],
+        rssi: chunk.r[i], speed: chunk.s[i],
+        distance: chunk.di[i], posStatus: POS_DECODE[chunk.ps[i]],
+        uptimeMin: chunk.up[i], version: chunk.ver[i], utc: chunk.utc[i], lokasi: chunk.lok[i]
+      };
+    }
+
+    rawLogs.push({
+      t_iso: d.toISOString(),
+      t_local: d.toLocaleTimeString('en-GB',{hour12:false})+'.'+String(d.getMilliseconds()).padStart(3,'0'),
+      type,
+      data,
+      _t: abs
+    });
+  }
+
+  if(rawLogs.length===0){ alert('Logs kosong'); return; }
+  rawLogs.sort((a,b)=> a._t - b._t);
+
+  playbackLogs = rawLogs;
+  hasAutoFit = false;
+  const firstDisp = playbackLogs.find(l=> l.type==='DISPPERI');
+  if(firstDisp?.data?.points){
+    currentDispPeriPoints = firstDisp.data.points || [];
+    currentSafeCoord = firstDisp.data.safe || null;
+    currentGreenBoxes = firstDisp.data.greenBoxes || [];
+    if(currentDispPeriPoints.length>0) autoFitToPoints(currentDispPeriPoints);
+  }
+
+  isPlaybackMode = true;
+  playbackIndex = 0;
+  window.playbackT0 = playbackLogs[0]._t;
+  window.playbackT1 = playbackLogs[playbackLogs.length-1]._t;
+  window.playbackTotalMs = window.playbackT1 - window.playbackT0;
+  const slider = document.getElementById('playback-slider');
+  slider.max = window.playbackTotalMs; 
+  slider.min = 0;
+  slider.step = 100; 
+  slider.value = 0;
+  document.getElementById('playback-bar').classList.add('show');
+  document.getElementById('btnPlay').classList.add('recording');
+  document.getElementById('btnPlay').innerHTML = '<span style="width:9px;height:9px;background:#fff;display:inline-block;border-radius:2px;"></span>';
+  document.getElementById('playbackTimerWrap').classList.remove('hidden');
+
+  nodeDataStore = {}; dtDataStore = {};
+  lastPlaybackIdx = -1;
+  lastPlaybackDisp = {points:[], safe:null, green:[]};
+  rebuildPlaybackUpTo(0);
+  startAutoPlayback();
+});
+
+
+function getIdxForTime(targetMs){
+  let lo=0, hi=playbackLogs.length-1, ans=0;
+  while(lo<=hi){
+    const mid=(lo+hi>>1);
+    if(playbackLogs[mid]._t <= targetMs){ ans=mid; lo=mid+1; }
+    else hi=mid-1;
+  }
+  return ans;
+}
+
+function rebuildPlaybackUpTo(idx, targetTimeMs = null){
+  nodeDataStore = {}; dtDataStore = {};
+  let dispPoints = []; let safe = null; let green = [];
+	let geof = null;
+
+  if(!playbackLogs[idx]) return;
+  const currentTime = targetTimeMs!== null? targetTimeMs : new Date(playbackLogs[idx].t_iso).getTime();
+	playbackCurrentTimeMs = currentTime;
+
+  let tempNode = {}; let tempDt = {};
+
+  for(let i=0;i<=idx;i++){
+    const log = playbackLogs[i];
+    const logTime = new Date(log.t_iso).getTime();
+    if(logTime > currentTime) continue;
+
+    if(log.type==='NODE'){
+      const d = {...log.data, timestamp: Date.now(), timeStr: log.t_local, _origTime: logTime};
+      tempNode[d.unitName] = d;
+    }else if(log.type==='DT'){
+      const d = {...log.data, timestamp: Date.now(), timeStr: log.t_local, _origTime: logTime};
+      tempDt[d.unitName] = d;
+    }else if(log.type==='DISPPERI'){
+      dispPoints = log.data.points || [];
+      safe = log.data.safe || null;
+      green = log.data.greenBoxes || [];
+		}else if(log.type==='GEOFENCE'){
+			geof = log.data; // {name, points}
+		}
+  }
+
+  const LIFETIME = 4000; 
+
+  Object.values(tempNode).forEach(d=>{
+    if(currentTime - d._origTime <= LIFETIME){
+      nodeDataStore[d.unitName] = { history:[d], latest:d };
+    }
+  });
+  Object.values(tempDt).forEach(d=>{
+    if(currentTime - d._origTime <= LIFETIME){
+      dtDataStore[d.unitName] = { history:[d], latest:d };
+    }
+  });
+
+  currentDispPeriPoints = dispPoints;
+  currentSafeCoord = safe;
+  currentGreenBoxes = green;
+	currentGeofence = geof;
+
+  if(!hasAutoFit && currentDispPeriPoints.length>0){
+    autoFitToPoints(currentDispPeriPoints);
+  }
+
+  updateNodeRTKBar();
+  updateDtRTKBar();
+  requestDraw();
+}
+
+let playbackSpeed = 1;
+let playbackRealStart = 0;
+let playbackLogStartTime = 0;
+let isPaused = false;
+let isPlaying = false;
+let pausedElapsed = 0;
+
+function formatSmoothTimeDeci(msTimestamp){
+  const d = new Date(msTimestamp);
+  let time = d.toLocaleTimeString('en-GB',{hour12:false}).replace(/\./g,':');
+  const deci = Math.floor(d.getMilliseconds()/100);
+  return `${time}.${deci}`;
+}
+
+function startAutoPlayback(fromIdx = null){
+  if(playbackLogs.length===0) return;
+  clearInterval(playbackTimer);
+
+  if(fromIdx!==null) playbackIndex = fromIdx;
+  if(playbackIndex >= playbackLogs.length-1) playbackIndex = 0;
+
+  playbackRealStart = performance.now();
+  playbackLogStartTime = playbackLogs[playbackIndex]._t || new Date(playbackLogs[playbackIndex].t_iso).getTime();
+  pausedElapsed = 0;
+  isPaused = false;
+  isPlaying = true;
+
+  const btn = document.getElementById('btnPlayPause');
+  btn.textContent = 'PAUSE';
+  btn.classList.remove('paused');
+
+	document.getElementById('recTimerWrap').classList.add('hidden');
+	document.getElementById('playbackTimerWrap').classList.remove('hidden');
+	document.getElementById('playback-bar').classList.add('show');
+  document.getElementById('playback-slider').value = playbackIndex;
+  rebuildPlaybackUpTo(playbackIndex, playbackLogStartTime);
+  startAutoPlaybackResume();
+}
+
+function togglePlayPause(){
+  const btn = document.getElementById('btnPlayPause');
+  if(!isPlaying){
+    startAutoPlayback(playbackIndex);
+    return;
+  }
+  if(!isPaused){
+    isPaused = true;
+    pausedElapsed = performance.now() - playbackRealStart;
+    clearInterval(playbackTimer);
+    btn.textContent = 'PLAY';
+    btn.classList.add('paused');
+  }else{
+    isPaused = false;
+    playbackRealStart = performance.now() - pausedElapsed;
+    const curT = playbackLogs[playbackIndex]._t || new Date(playbackLogs[playbackIndex].t_iso).getTime();
+    playbackLogStartTime = curT - pausedElapsed * playbackSpeed;
+    btn.textContent = 'PAUSE';
+    btn.classList.remove('paused');
+    startAutoPlaybackResume();
+  }
+}
+
+function formatPlaybackLabel(msTimestamp){
+  const d = new Date(msTimestamp);
+  const bul = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+  let time = d.toLocaleTimeString('en-GB',{hour12:false}).replace(/\./g,':');
+  const deci = Math.floor(d.getMilliseconds()/100);
+  return `${d.getDate()} ${bul[d.getMonth()]} ${time}.${deci}`; 
+}
+
+function startAutoPlaybackResume(){
+  clearInterval(playbackTimer);
+  isPlaying = true;
+  playbackTimer = setInterval(()=>{
+    const elapsedReal = performance.now() - playbackRealStart;
+    const targetLogTime = playbackLogStartTime + (elapsedReal * playbackSpeed);
+
+    const offset = Math.max(0, Math.min(window.playbackTotalMs, targetLogTime - window.playbackT0));
+    document.getElementById('playback-slider').value = offset;
+
+    playbackIndex = getIdxForTime(targetLogTime);
+    rebuildPlaybackUpTo(playbackIndex, targetLogTime);
+
+    document.getElementById('playback-label').textContent = formatPlaybackLabel(targetLogTime);
+
+    if(targetLogTime >= window.playbackT1 + 500){
+      clearInterval(playbackTimer);
+      isPlaying = false;
+      isPaused = true;
+      document.getElementById('btnPlayPause').textContent = 'PLAY';
+      document.getElementById('btnPlayPause').classList.add('paused');
+    }
+  }, 100);
+}
+
+const sliderEl = document.getElementById('playback-slider');
+sliderEl.addEventListener('input', (e)=>{
+  const offset = parseInt(e.target.value); // ms dari T0
+  const targetTime = window.playbackT0 + offset;
+  playbackIndex = getIdxForTime(targetTime);
+  playbackLogStartTime = targetTime;
+  playbackRealStart = performance.now();
+  pausedElapsed = 0;
+  rebuildPlaybackUpTo(playbackIndex, targetTime);
+  document.getElementById('playback-label').textContent = formatPlaybackLabel(targetTime);
+  isPaused = true;
+  isPlaying = false;
+  document.getElementById('btnPlayPause').textContent = 'PLAY';
+  document.getElementById('btnPlayPause').classList.add('paused');
+  clearInterval(playbackTimer);
+});
+
+
+function stopPlaybackMode(){
+  clearInterval(playbackTimer);
+  isPlaybackMode = false;
+  playbackLogs = [];
+  document.getElementById('playbackTimerWrap').classList.add('hidden');
+	document.getElementById('playback-bar').classList.remove('show');
+  document.getElementById('recTimerWrap').classList.add('hidden');
+  document.getElementById('btnPlay').classList.remove('recording');
+  document.getElementById('btnPlay').innerHTML = '<span>▶</span>';
+  nodeDataStore = {}; dtDataStore = {};
+  currentDispPeriPoints = []; currentGreenBoxes = [];
+  requestDraw();
+}
+
 function requestDraw() {
   if (!needsRedraw) {
     needsRedraw = true;
@@ -514,11 +1172,15 @@ function updatePopupPosition() {
   }
 }
 
-function formatLast(ts){
-  if(!ts) return '-';
-  const diff = (Date.now() - ts) / 1000; 
-  if(diff < 60) return Math.floor(diff) +  's ago';
-  return new Date(ts).toLocaleTimeString();
+function formatLast(ts, timeStr){
+  if(!ts &&!timeStr) return '-';
+  if(typeof isPlaybackMode!== 'undefined' && isPlaybackMode){
+    if(timeStr) return timeStr.split('.')[0]; // 01:08:23 diam, gak jalan
+    return new Date(ts).toLocaleTimeString('en-GB',{hour12:false});
+  }
+  const diff = (Date.now() - ts) / 1000;
+  if(diff < 60) return Math.floor(diff) + 's ago'; // live tetap 0s,1s,3s
+  return new Date(ts).toLocaleTimeString('en-GB',{hour12:false});
 }
 
 function openUnitPopup(key){
@@ -535,19 +1197,23 @@ function openUnitPopup(key){
 
 function closeUnitPopup(isManual = true){
   document.getElementById('unit-popup').classList.remove('show');
-  document.getElementById('popup-follow-btn').textContent = '◎';
-  followMode = false;
 
   if(isManual){
     selectedUnitKey = null;
     lastSelectedKey = null;
     autoClosed = false;
+    lastFollowMode = false;
+    followMode = false;
+    const fb = document.getElementById('popup-follow-btn');
+    if(fb){ fb.textContent = '◎'; fb.classList.remove('active'); }
   } else {
+    lastFollowMode = followMode; 
     if(selectedUnitKey) lastSelectedKey = selectedUnitKey;
     selectedUnitKey = null;
     autoClosed = true;
   }
 }
+
 function updateUnitPopup(){
   const checkKey = selectedUnitKey || lastSelectedKey;
   if(!checkKey) return;
@@ -562,7 +1228,8 @@ function updateUnitPopup(){
     return;
   }
 
-  const isExpired = (Date.now() - store.timestamp > 20000);
+  const nowRef = (isPlaybackMode && playbackCurrentTimeMs)? playbackCurrentTimeMs : Date.now();
+	const isExpired = (nowRef - (store._origTime || store.timestamp) > (isPlaybackMode? 4000 : 20000));
 
   if(isExpired){
     if(selectedUnitKey) closeUnitPopup(false);
@@ -571,7 +1238,16 @@ function updateUnitPopup(){
 
   if(autoClosed && lastSelectedKey){
     selectedUnitKey = lastSelectedKey;
-    lastSelectedKey = null;
+		if(lastFollowMode){
+			followMode = true;
+			const followBtn = document.getElementById('popup-follow-btn');
+			if(followBtn){			
+				followBtn.textContent = '◉';
+				followBtn.classList.add('active');
+			}
+		}
+		updatePopupPosition();
+		lastSelectedKey = null;
     autoClosed = false;
     document.getElementById('unit-popup').classList.add('show');
     console.log('auto reopen', selectedUnitKey);
@@ -580,7 +1256,7 @@ function updateUnitPopup(){
   document.getElementById('popup-unit-name').textContent = (store.unitName || checkKey).split('-')[0];
   document.getElementById('popup-status').textContent = store.posStatus || store.status || (store.activation==1?'Aktif':'OFF');
   document.getElementById('popup-gps').textContent = store.gpsStatus || store.gps || '-';
-  document.getElementById('popup-last').textContent = formatLast(store.timestamp);
+  document.getElementById('popup-last').textContent = formatLast(store.timestamp, store.timeStr);
 
   const rowDist = document.getElementById('popup-distance').closest('div');
   const rowUptime = document.getElementById('popup-uptime').closest('div');
@@ -1304,6 +1980,7 @@ function processDispPeriPayload(payload) {
 
   currentDispPeriPoints = sortPointsNearestNeighbor(validPoints);
   currentGreenBoxes = calculateIndependentGreenBoxes(currentDispPeriPoints, currentSafeCoord, 15);
+	pushToRec('DISPPERI', { points: validPoints, safe: currentSafeCoord, greenBoxes: currentGreenBoxes });
 
   if (!hasAutoFit && !geoTiffImage) {
     autoFitToPoints(currentDispPeriPoints);
@@ -1311,18 +1988,15 @@ function processDispPeriPayload(payload) {
   requestDraw();
 }
 
+// biu;-1.928589,115.861480;-1.928284,115.862133;-1.928637,115.862335;-1.928943,115.861674;4
 function processGeofencePayload(payload) {
-  // biu;-1.928589,115.861480;-1.928284,115.862133;-1.928637,115.862335;-1.928943,115.861674;4
   const parts = payload.split(';').map(p => p.trim()).filter(p => p.length > 0);
   if (parts.length < 3) return;
-
   const profileName = parts[0];
   if (!currentProfile || currentProfile.name!== profileName) return;
 
   let coordParts = parts.slice(1);
-  if (coordParts.length > 0 &&!coordParts[coordParts.length - 1].includes(',')) {
-    coordParts.pop();
-  }
+  if (coordParts.length > 0 &&!coordParts[coordParts.length - 1].includes(',')) coordParts.pop();
 
   const points = [];
   coordParts.forEach(pairStr => {
@@ -1330,16 +2004,14 @@ function processGeofencePayload(payload) {
     if (c.length!== 2) return;
     const lat = parseFloat(c[0].trim());
     const lon = parseFloat(c[1].trim());
-    if (!isNaN(lat) &&!isNaN(lon) && lat!== 0 && lon!== 0) {
-      points.push({ lat, lon });
-    }
+    if (!isNaN(lat) &&!isNaN(lon) && lat!== 0 && lon!== 0) points.push({ lat, lon });
   });
 
-  if (points.length < 2) {
-    currentGeofence = null;
-  } else {
-    currentGeofence = { name: profileName, points: points };
-  }
+  if (points.length < 2) currentGeofence = null;
+  else currentGeofence = { name: profileName, points: points };
+
+  pushToRec('GEOFENCE', { name: profileName, points: points });
+
   requestDraw();
 }
 
@@ -1599,6 +2271,7 @@ function processDevstatPayload(payload) {
         const timeStr = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
         if (!nodeDataStore[unitName]) nodeDataStore[unitName] = {history:[], latest:null};
         const e = {unitName,lon,lat,gpsStatus,uptimeMin,activation,version,rssi,timestamp:now.getTime(),timeStr};
+				pushToRec('NODE', e);
         nodeDataStore[unitName].history.push(e);
         if (nodeDataStore[unitName].history.length>20) nodeDataStore[unitName].history.shift();
         nodeDataStore[unitName].latest = e;
@@ -1677,7 +2350,7 @@ function renderDtListPopup(filterText = '') {
       <div class="dt-item" onclick="focusOnDt('${unitName}')">
         <div class="node-info">
           <div class="node-title">${item.unitName} <span style="font-size:0.95em; font-weight:600; color:#888;">Rtk Fix ${rtkEach} (${rtkFix}/${total})</span></div>
-          <div class="node-subtext">Last ${item.timeStr} ${item.gpsStatus} ${item.uptimeMin}min ${item.version}</div>
+          <div class="node-subtext">Last ${item.timeStr.split('.')[0]} ${item.gpsStatus} ${item.uptimeMin}min ${item.version}</div>
           <div class="node-subtext">${item.distance}m ${item.posStatus} ${item.speed}kmh ${item.rssi} ${item.utc} ${item.lokasi}</div>
         </div>
         <span class="dt-status-dot ${dotClass}"></span>
@@ -1709,7 +2382,7 @@ function renderNodeListPopup() {
       <div class="node-item">
         <div class="node-info">
           <div class="node-title" style="cursor: pointer;" onclick="focusOnNode('${item.unitName}')">${item.unitName}</div>
-          <div class="node-subtext">Last ${item.timeStr} ${item.gpsStatus} ${item.uptimeMin}min ${item.version} ${item.rssi}</div>
+          <div class="node-subtext">Last ${item.timeStr.split('.')[0]} ${item.gpsStatus} ${item.uptimeMin}min ${item.version} ${item.rssi}</div>
         </div>
         <label class="switch ${isBlinking}">
           <input type="checkbox" id="toggle-node-${safeId}" ${isChecked} ${isDisabled} onchange="toggleNodeActivation('${item.unitName}', this.checked)">
@@ -1821,6 +2494,7 @@ function parseDtLine(line) {
     unitName, lon, lat, gpsStatus, uptimeMin, utc, distance, posStatus, version, speed, rssi, lokasi,
     timestamp: now.getTime(), timeStr
   };
+	pushToRec('DT', dtEntry);
 
   if (!dtDataStore[unitName]) dtDataStore[unitName] = { history: [], latest: null };
 
@@ -2220,8 +2894,8 @@ function draw() {
     }
 
     const nowTime = Date.now();
-    activeNodes.forEach(pt => {
-      if (nowTime - pt.timestamp > 30 * 60 * 1000) return;
+		activeNodes.forEach(pt => {
+			if (!isPlaybackMode && nowTime - pt.timestamp > 30 * 60 * 1000) return;
 
       const screenX = pt.lon * scale + offsetX;
       const screenY = -pt.lat * scale + offsetY;
@@ -2257,13 +2931,13 @@ function draw() {
 			if(!latest) return;
 			if (latest.lon === 0 && latest.lat === 0) return;
       const ageLatest = nowTime - latest.timestamp;
-      if (ageLatest > 20000) return;
+			if (!isPlaybackMode && ageLatest > 20000) return;
 
       const baseColor = getStatusColor(latest.posStatus);
 
       history.forEach((pt, index) => {
         const ptAge = nowTime - pt.timestamp;
-        if (ptAge > 20000) return;
+        if (!isPlaybackMode && ptAge > 20000) return;
 				if (pt.lon === 0 && pt.lat === 0) return;
 
         const screenX = pt.lon * scale + offsetX;
@@ -2361,6 +3035,6 @@ btnInstall.addEventListener('click', async ()=>{
 });
 
 </script>
-<footer>© 2026 GPRZ | v2.6</footer>
+<footer>© 2026 GPRZ | v3.5</footer>
 </body>
 </html>
