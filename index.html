@@ -798,8 +798,8 @@ function pushToRec(type, dataObj){
   recContainer.s.push(isDt? (dataObj.speed??0) : null);
   recContainer.di.push(isDt? (dataObj.distance??0) : null);
   recContainer.ps.push(isDt? (POS_CODE[dataObj.posStatus]??0) : null);
-  recContainer.up.push(isDt? (dataObj.uptimeMin??0) : null);
-  recContainer.ver.push(isDt? (dataObj.version??0) : null);
+  recContainer.up.push(dataObj.uptimeMin ?? null);
+  recContainer.ver.push(dataObj.version ?? null);
   recContainer.utc.push(isDt? (dataObj.utc??0) : null);
   recContainer.lok.push(isDt? (dataObj.lokasi??0) : null);
   recContainer.dp.push(isDisp? dataObj : null);
@@ -889,7 +889,8 @@ document.getElementById('zip-input').addEventListener('change', async (e)=>{
       data = {
         unitName: getUnitName(chunk.u[i]),
         lat: chunk.lat[i], lon: chunk.lon[i],
-        gpsStatus: GPS_DECODE[chunk.g[i]] || 'RTK FIX',
+        gpsStatus: GPS_DECODE[chunk.g[i]],
+				uptimeMin: chunk.up[i], version: chunk.ver[i],
         rssi: chunk.r[i], activation: chunk.act[i]
       };
     }else{
@@ -990,15 +991,16 @@ function rebuildPlaybackUpTo(idx, targetTimeMs = null){
 		}
   }
 
-  const LIFETIME = 4000; 
+  const LIFETIME_DT = 4000;
+	const LIFETIME_NODE = 10 * 60 * 1000;
 
   Object.values(tempNode).forEach(d=>{
-    if(currentTime - d._origTime <= LIFETIME){
+    if(currentTime - d._origTime <= LIFETIME_NODE){
       nodeDataStore[d.unitName] = { history:[d], latest:d };
     }
   });
   Object.values(tempDt).forEach(d=>{
-    if(currentTime - d._origTime <= LIFETIME){
+    if(currentTime - d._origTime <= LIFETIME_DT){
       dtDataStore[d.unitName] = { history:[d], latest:d };
     }
   });
@@ -1071,14 +1073,18 @@ function togglePlayPause(){
   }else{
     isPaused = false;
     playbackRealStart = performance.now() - pausedElapsed;
-    const curT = playbackLogs[playbackIndex]._t || new Date(playbackLogs[playbackIndex].t_iso).getTime();
-    playbackLogStartTime = curT - pausedElapsed * playbackSpeed;
+    if(window._scrubTargetTime){
+      playbackLogStartTime = window._scrubTargetTime - pausedElapsed * playbackSpeed;
+      window._scrubTargetTime = null;
+    }else{
+      const curT = playbackLogs[playbackIndex]._t || new Date(playbackLogs[playbackIndex].t_iso).getTime();
+      playbackLogStartTime = curT - pausedElapsed * playbackSpeed;
+    }
     btn.textContent = 'PAUSE';
     btn.classList.remove('paused');
     startAutoPlaybackResume();
   }
 }
-
 function formatPlaybackLabel(msTimestamp){
   const d = new Date(msTimestamp);
   const bul = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
@@ -1117,13 +1123,14 @@ sliderEl.addEventListener('input', (e)=>{
   const offset = parseInt(e.target.value); // ms dari T0
   const targetTime = window.playbackT0 + offset;
   playbackIndex = getIdxForTime(targetTime);
+	window._scrubTargetTime = targetTime;
   playbackLogStartTime = targetTime;
   playbackRealStart = performance.now();
   pausedElapsed = 0;
   rebuildPlaybackUpTo(playbackIndex, targetTime);
   document.getElementById('playback-label').textContent = formatPlaybackLabel(targetTime);
   isPaused = true;
-  isPlaying = false;
+  isPlaying = true;
   document.getElementById('btnPlayPause').textContent = 'PLAY';
   document.getElementById('btnPlayPause').classList.add('paused');
   clearInterval(playbackTimer);
@@ -1229,7 +1236,9 @@ function updateUnitPopup(){
   }
 
   const nowRef = (isPlaybackMode && playbackCurrentTimeMs)? playbackCurrentTimeMs : Date.now();
-	const isExpired = (nowRef - (store._origTime || store.timestamp) > (isPlaybackMode? 4000 : 20000));
+  const isNodes = checkKey.startsWith("NODE") ||!!nodeDataStore[checkKey];
+  const life = isPlaybackMode? (isNodes? 10*60*1000 : 4000) : 20000;
+  const isExpired = (nowRef - (store._origTime || store.timestamp) > life);
 
   if(isExpired){
     if(selectedUnitKey) closeUnitPopup(false);
@@ -2255,6 +2264,7 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
 }
 
 let renderScheduled = false;
+
 function processDevstatPayload(payload) {
   if (!payload) return;
   const lines = payload.split('\n');
