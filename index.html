@@ -758,7 +758,27 @@ async function stopRecUI(){
     dp: recContainer.dp, gf: recContainer.gf
   };
 
-  const jsonStr = JSON.stringify(payload);
+  const jsonStr = `{
+	"t0": ${JSON.stringify(payload.t0)},
+	"dict": ${JSON.stringify(payload.dict)},
+	"t": ${JSON.stringify(payload.t)},
+	"k": ${JSON.stringify(payload.k)},
+	"u": ${JSON.stringify(payload.u)},
+	"lat": ${JSON.stringify(payload.lat)},
+	"lon": ${JSON.stringify(payload.lon)},
+	"g": ${JSON.stringify(payload.g)},
+	"r": ${JSON.stringify(payload.r)},
+	"act": ${JSON.stringify(payload.act)},
+	"s": ${JSON.stringify(payload.s)},
+	"di": ${JSON.stringify(payload.di)},
+	"ps": ${JSON.stringify(payload.ps)},
+	"up": ${JSON.stringify(payload.up)},
+	"ver": ${JSON.stringify(payload.ver)},
+	"utc": ${JSON.stringify(payload.utc)},
+	"lok": ${JSON.stringify(payload.lok)},
+	"dp": ${JSON.stringify(payload.dp)},
+	"gf": ${JSON.stringify(payload.gf)}
+  }`;
   const enc = new TextEncoder().encode(jsonStr);
   const gz = fflate.gzipSync(enc, {level:6, mtime:0}); 
 
