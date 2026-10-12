@@ -759,26 +759,26 @@ async function stopRecUI(){
   };
 
   const jsonStr = `{
-	"t0": ${JSON.stringify(payload.t0)},
-	"dict": ${JSON.stringify(payload.dict)},
-	"t": ${JSON.stringify(payload.t)},
-	"k": ${JSON.stringify(payload.k)},
-	"u": ${JSON.stringify(payload.u)},
-	"lat": ${JSON.stringify(payload.lat)},
-	"lon": ${JSON.stringify(payload.lon)},
-	"g": ${JSON.stringify(payload.g)},
-	"r": ${JSON.stringify(payload.r)},
-	"act": ${JSON.stringify(payload.act)},
-	"s": ${JSON.stringify(payload.s)},
-	"di": ${JSON.stringify(payload.di)},
-	"ps": ${JSON.stringify(payload.ps)},
-	"up": ${JSON.stringify(payload.up)},
-	"ver": ${JSON.stringify(payload.ver)},
-	"utc": ${JSON.stringify(payload.utc)},
-	"lok": ${JSON.stringify(payload.lok)},
-	"dp": ${JSON.stringify(payload.dp)},
-	"gf": ${JSON.stringify(payload.gf)}
-  }`;
+		"t0": ${JSON.stringify(payload.t0)},
+		"dict": ${JSON.stringify(payload.dict)},
+		"t": ${JSON.stringify(payload.t)},
+		"k": ${JSON.stringify(payload.k)},
+		"u": ${JSON.stringify(payload.u)},
+		"lat": ${JSON.stringify(payload.lat)},
+		"lon": ${JSON.stringify(payload.lon)},
+		"g": ${JSON.stringify(payload.g)},
+		"r": ${JSON.stringify(payload.r)},
+		"act": ${JSON.stringify(payload.act)},
+		"s": ${JSON.stringify(payload.s)},
+		"di": ${JSON.stringify(payload.di)},
+		"ps": ${JSON.stringify(payload.ps)},
+		"up": ${JSON.stringify(payload.up)},
+		"ver": ${JSON.stringify(payload.ver)},
+		"utc": ${JSON.stringify(payload.utc)},
+		"lok": ${JSON.stringify(payload.lok)},
+		"dp": ${JSON.stringify(payload.dp)},
+		"gf": ${JSON.stringify(payload.gf)}
+	}`;
   const enc = new TextEncoder().encode(jsonStr);
   const gz = fflate.gzipSync(enc, {level:6, mtime:0}); 
 
@@ -1111,6 +1111,9 @@ function startAutoPlayback(fromIdx = null){
 	document.getElementById('playbackTimerWrap').classList.remove('hidden');
 	document.getElementById('playback-bar').classList.add('show');
   document.getElementById('playback-slider').value = playbackIndex;
+	window._lastTargetLogTime = playbackLogStartTime;
+  _lastRealTick = performance.now();
+  document.getElementById('playback-label').innerHTML = formatPlaybackLabel(playbackLogStartTime);
   rebuildPlaybackUpTo(playbackIndex, playbackLogStartTime);
   startAutoPlaybackResume();
 }
@@ -1146,7 +1149,14 @@ function formatPlaybackLabel(msTimestamp){
   const bul = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
   let time = d.toLocaleTimeString('en-GB',{hour12:false}).replace(/\./g,':');
   const deci = Math.floor(d.getMilliseconds()/100);
-  return `${d.getDate()} ${bul[d.getMonth()]} ${time}.${deci}`; 
+  
+  const off = -d.getTimezoneOffset();
+  let zona = "";
+  if(off===420) zona="WIB";
+  else if(off===480) zona="WITA";
+  else if(off===540) zona="WIT";
+  
+  return `${d.getDate()} ${bul[d.getMonth()]} ${time}.${deci} <span style="font-size:0.5em; opacity:0.7">${zona}</span>`; 
 }
 
 function startAutoPlaybackResume(){
@@ -1168,7 +1178,7 @@ function startAutoPlaybackResume(){
 
     playbackIndex = getIdxForTime(targetLogTime);
     rebuildPlaybackUpTo(playbackIndex, targetLogTime);
-    document.getElementById('playback-label').textContent = formatPlaybackLabel(targetLogTime);
+    document.getElementById('playback-label').innerHTML = formatPlaybackLabel(targetLogTime);
 
     if(targetLogTime >= window.playbackT1 + 500){
       clearInterval(playbackTimer);
@@ -1192,7 +1202,7 @@ sliderEl.addEventListener('input', (e)=>{
 	_lastRealTick = performance.now();
   pausedElapsed = 0;
   rebuildPlaybackUpTo(playbackIndex, targetTime);
-  document.getElementById('playback-label').textContent = formatPlaybackLabel(targetTime);
+  document.getElementById('playback-label').innerHTML = formatPlaybackLabel(targetTime);
   isPaused = true;
   isPlaying = true;
   document.getElementById('btnPlayPause').textContent = 'PLAY';
@@ -2206,23 +2216,23 @@ function sortPointsNearestNeighbor(points) {
   return sorted;
 }
 
+function getZona(date = new Date()) {
+  const offset = -date.getTimezoneOffset();
+  if (offset === 420) return "WIB";
+  if (offset === 480) return "WITA";
+  if (offset === 540) return "WIT";
+  try {
+    return new Intl.DateTimeFormat('id-ID', { timeZoneName: 'short' }).formatToParts(date).find(p => p.type === 'timeZoneName')?.value || "";
+  } catch(e) { return ""; }
+}
+
+
 function updateClock() {
   const now = new Date();
   const day = String(now.getDate()).padStart(2, '0');
   const monthNames = ["JAN", "FEB", "MAR", "APR", "MEI", "JUN", "JUL", "AGU", "SEP", "OKT", "NOV", "DES"];
   const month = monthNames[now.getMonth()];
-
-  const offset = -now.getTimezoneOffset(); 
-  let zona = "";
-  if (offset === 420) zona = "WIB";
-  else if (offset === 480) zona = "WITA";
-  else if (offset === 540) zona = "WIT";
-  else {
-    try {
-      zona = new Intl.DateTimeFormat('id-ID', { timeZoneName: 'short' }).formatToParts(now).find(p => p.type === 'timeZoneName')?.value || "";
-    } catch(e) { zona = ""; }
-  }
-
+  const zona = getZona(now);
   const clockEl = document.getElementById('clock-display');
   if (clockEl) {
     clockEl.textContent = ` • ${day} ${month} ${now.getFullYear()} • ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} ${zona}`;
