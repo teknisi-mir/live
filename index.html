@@ -1002,7 +1002,7 @@ function rebuildPlaybackUpTo(idx, targetTimeMs = null){
       safe = log.data.safe || null;
       green = log.data.greenBoxes || [];
 		}else if(log.type==='GEOFENCE'){
-			geof = log.data; // {name, points}
+			geof = log.data; 
 		}
   }
 
@@ -1034,16 +1034,34 @@ function rebuildPlaybackUpTo(idx, targetTimeMs = null){
   requestDraw();
 }
 
-let playbackSpeed = 1;
-function setPlaybackSpeed(s){
-  playbackSpeed = s;
-  document.querySelectorAll('.speed-txt').forEach(b=> b.classList.toggle('active', parseInt(b.dataset.speed)===s));
-}
 let playbackRealStart = 0;
 let playbackLogStartTime = 0;
 let isPaused = false;
 let isPlaying = false;
 let pausedElapsed = 0;
+let playbackSpeed = 1;
+let _lastRealTick = 0; 
+window._lastTargetLogTime = 0;
+
+window.setPlaybackSpeed = function(s){
+  const slider = document.getElementById('playback-slider');
+  const curTarget = window._lastTargetLogTime || ((window.playbackT0||0) + (parseInt(slider.value)||0));
+  
+  playbackSpeed = s;
+  document.querySelectorAll('.speed-txt').forEach(b=>{
+    b.classList.toggle('active', parseInt(b.dataset.speed)===s);
+  });
+
+  if(isPlaying && !isPaused){
+    window._lastTargetLogTime = curTarget;
+    _lastRealTick = performance.now();
+    playbackLogStartTime = curTarget;
+    playbackRealStart = performance.now();
+  } else {
+    window._lastTargetLogTime = curTarget;
+    playbackLogStartTime = curTarget;
+  }
+};
 
 function formatSmoothTimeDeci(msTimestamp){
   const d = new Date(msTimestamp);
@@ -1085,25 +1103,24 @@ function togglePlayPause(){
   }
   if(!isPaused){
     isPaused = true;
-    pausedElapsed = performance.now() - playbackRealStart;
+    pausedElapsed = performance.now() - _lastRealTick;
     clearInterval(playbackTimer);
     btn.textContent = 'PLAY';
     btn.classList.add('paused');
   }else{
     isPaused = false;
-    playbackRealStart = performance.now() - pausedElapsed;
+    _lastRealTick = performance.now();
     if(window._scrubTargetTime){
-      playbackLogStartTime = window._scrubTargetTime - pausedElapsed * playbackSpeed;
+      window._lastTargetLogTime = window._scrubTargetTime;
+      playbackLogStartTime = window._scrubTargetTime;
       window._scrubTargetTime = null;
-    }else{
-      const curT = playbackLogs[playbackIndex]._t || new Date(playbackLogs[playbackIndex].t_iso).getTime();
-      playbackLogStartTime = curT - pausedElapsed * playbackSpeed;
     }
     btn.textContent = 'PAUSE';
     btn.classList.remove('paused');
     startAutoPlaybackResume();
   }
 }
+
 function formatPlaybackLabel(msTimestamp){
   const d = new Date(msTimestamp);
   const bul = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
@@ -1115,16 +1132,22 @@ function formatPlaybackLabel(msTimestamp){
 function startAutoPlaybackResume(){
   clearInterval(playbackTimer);
   isPlaying = true;
+  _lastRealTick = performance.now();
+  if(!window._lastTargetLogTime) window._lastTargetLogTime = playbackLogStartTime;
+  
   playbackTimer = setInterval(()=>{
-    const elapsedReal = performance.now() - playbackRealStart;
-    const targetLogTime = playbackLogStartTime + (elapsedReal * playbackSpeed);
+    const now = performance.now();
+    const deltaReal = now - _lastRealTick;
+    _lastRealTick = now;
+    
+    window._lastTargetLogTime += deltaReal * playbackSpeed;
+    const targetLogTime = window._lastTargetLogTime;
 
     const offset = Math.max(0, Math.min(window.playbackTotalMs, targetLogTime - window.playbackT0));
     document.getElementById('playback-slider').value = offset;
 
     playbackIndex = getIdxForTime(targetLogTime);
     rebuildPlaybackUpTo(playbackIndex, targetLogTime);
-
     document.getElementById('playback-label').textContent = formatPlaybackLabel(targetLogTime);
 
     if(targetLogTime >= window.playbackT1 + 500){
@@ -1139,12 +1162,14 @@ function startAutoPlaybackResume(){
 
 const sliderEl = document.getElementById('playback-slider');
 sliderEl.addEventListener('input', (e)=>{
-  const offset = parseInt(e.target.value); // ms dari T0
+  const offset = parseInt(e.target.value); 
   const targetTime = window.playbackT0 + offset;
   playbackIndex = getIdxForTime(targetTime);
 	window._scrubTargetTime = targetTime;
+	window._lastTargetLogTime = targetTime;
   playbackLogStartTime = targetTime;
   playbackRealStart = performance.now();
+	_lastRealTick = performance.now();
   pausedElapsed = 0;
   rebuildPlaybackUpTo(playbackIndex, targetTime);
   document.getElementById('playback-label').textContent = formatPlaybackLabel(targetTime);
@@ -1201,11 +1226,11 @@ function updatePopupPosition() {
 function formatLast(ts, timeStr){
   if(!ts &&!timeStr) return '-';
   if(typeof isPlaybackMode!== 'undefined' && isPlaybackMode){
-    if(timeStr) return timeStr.split('.')[0]; // 01:08:23 diam, gak jalan
+    if(timeStr) return timeStr.split('.')[0]; 
     return new Date(ts).toLocaleTimeString('en-GB',{hour12:false});
   }
   const diff = (Date.now() - ts) / 1000;
-  if(diff < 60) return Math.floor(diff) + 's ago'; // live tetap 0s,1s,3s
+  if(diff < 60) return Math.floor(diff) + 's ago'; 
   return new Date(ts).toLocaleTimeString('en-GB',{hour12:false});
 }
 
