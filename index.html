@@ -2092,7 +2092,9 @@ function processGeofencePayload(payload) {
 
   if (points.length < 2) currentGeofence = null;
   else currentGeofence = { name: profileName, points: points };
-
+  if (!hasAutoFit && !geoTiffImage && (!currentDispPeriPoints || currentDispPeriPoints.length === 0)) {
+    autoFitToPoints(points);
+  }
   pushToRec('GEOFENCE', { name: profileName, points: points });
 
   requestDraw();
@@ -2756,8 +2758,9 @@ function draw() {
 
   const hasNodes = activeNodes.length > 0;
   const hasDts = activeDts.length > 0;
+  const hasGeofence = (currentGeofence && currentGeofence.points && currentGeofence.points.length >= 2);
 
-  if (hasGeoTiff || hasPoints || hasNodes || hasDts) {
+  if (hasGeoTiff || hasPoints || hasNodes || hasDts || hasGeofence) {
 
     // 1. grid
     ctx.save();
@@ -2769,6 +2772,7 @@ function draw() {
     else if (hasNodes) refLat = activeNodes[0].lat;
     else if (hasDts) refLat = activeDts[0].lat;
     else if (hasGeoTiff) refLat = (bounds.minY + bounds.maxY) / 2;
+	else if (hasGeofence) refLat = currentGeofence.points[0].lat;
 
     const stepLat = 20 / 111000; 
     const stepLon = 20 / (111000 * Math.cos(refLat * Math.PI / 180) || 1); 
@@ -2912,7 +2916,7 @@ function draw() {
         ctx.fillText("SAFECOORD", 0, 0);
         ctx.restore();
       }
-			if (currentGeofence && currentGeofence.points && currentGeofence.points.length >= 2) {
+			if (hasGeofence) {
 				const pts = currentGeofence.points;
 
 				ctx.strokeStyle = 'rgba(255, 235, 59, 0.7)';
