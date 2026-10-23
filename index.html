@@ -2682,6 +2682,12 @@ async function focusOnNode(unitName) {
   panTo(target.lon, target.lat, 2000);
 }
 
+function getTglIndo() {
+  const bulan = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+  const now = new Date();
+  return `${now.getDate()}-${bulan[now.getMonth()]}`;
+}
+	
 function downloadKMLBoundary(){
   if(!currentDispPeriPoints || currentDispPeriPoints.length===0){
     alert('Boundary belum ada (dispperi kosong)');
@@ -2720,7 +2726,7 @@ function downloadKMLBoundary(){
 </kml>`;
   const blob = new Blob([kml], {type: 'application/vnd.google-earth.kml+xml'});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download=`${tag}_boundary.kml`; a.click();
+  const a = document.createElement('a'); a.href=url; a.download=`${tag}_boundary-${getTglIndo()}.kml`; a.click();
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
 }
 
@@ -3134,6 +3140,6 @@ document.querySelectorAll('.speed-txt').forEach(el=>{
 });
 
 </script>
-<footer>© 2026 GPRZ | v3.6</footer>
+<footer>© 2026 GPRZ | v3.7</footer>
 </body>
 </html>
