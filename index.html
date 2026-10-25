@@ -951,12 +951,11 @@ document.getElementById('zip-input').addEventListener('change', async (e)=>{
 
   playbackLogs = rawLogs;
   hasAutoFit = false;
-  const firstDisp = playbackLogs.find(l=> l.type==='DISPPERI');
-  if(firstDisp?.data?.points){
-    currentDispPeriPoints = firstDisp.data.points || [];
-    currentSafeCoord = firstDisp.data.safe || null;
-    currentGreenBoxes = firstDisp.data.greenBoxes || [];
-    if(currentDispPeriPoints.length>0) autoFitToPoints(currentDispPeriPoints);
+  const firstDisp = playbackLogs.find(l=> l.type==='NODE') || playbackLogs.find(l=> l.type==='DT') || playbackLogs.find(l=> l.type==='DISPPERI');
+  if(firstDisp?.data?.lat && firstDisp?.data?.lon){
+	autoFitToPoints([{ lat: firstDisp.data.lat, lon: firstDisp.data.lon }]);
+  } else if(firstDisp?.data?.points?.length > 0){
+	autoFitToPoints(firstDisp.data.points);
   }
 
   isPlaybackMode = true;
